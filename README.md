@@ -1,7 +1,7 @@
 # WordleSolver
 
 CT Projekt 2 TGI12/4
-von 19/03/2022 bis ??/??/????
+von 19/03/2022 bis 03/06/2022
 
 ein Programm zum simulieren von Wordle und Lösungen für dises.
 
