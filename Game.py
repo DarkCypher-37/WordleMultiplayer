@@ -4,6 +4,19 @@ import random
 import enum
 import arcade
 
+import traceback
+
+def debug(obj):
+    print("debugging ...")
+    while True:
+        try:
+            print(repr(eval(input())))
+        except KeyboardInterrupt:
+            print("... debugging over")
+            break
+        except:
+            traceback.print_exc()
+
 class CharStatus(enum.Enum):
     undefined = -1
     correct_position = 2                # green
@@ -64,15 +77,15 @@ class Game:
         # print("loop over")
 
 
-
-
 class Player:
 
     def __init__(self, solution_word) -> None:
         self.wordlist = WordList()
         self.solution_word = solution_word
-        self.word_table = [[None] * 5] * 6 # 5 by 6 table of the words
-        self.match_table = [[None] * 5] * 6 # 5 by 6 table of the words's status
+        # self.word_table = [[None] * 5] * 6 # 5 by 6 table of the words
+        self.word_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words
+        # self.match_table = [[None] * 5] * 6 # 5 by 6 table of the words's status
+        self.match_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words's status
         self.current_word_index = 0
         self.current_char_index = 0
 
@@ -95,6 +108,8 @@ class Player:
         if len(char) > 1: # may not be nessecary
             raise ValueError(f"{char!r} is too long to be a char")
 
+        # TODO: check for letter through a .. z and .lower() 
+
         print("executed once")
         self.word_table[self.current_word_index][self.current_char_index] = char
         self.current_char_index += 1
@@ -102,10 +117,20 @@ class Player:
 
         if self.current_char_index >= 5:
             print("reached max char_index")
-            # when the end of a word is reached, reset the char index 
+            # when the end of a word is reached, check for a word match
+            match = self.update_current_match()
+            if not match:
+                # the word is not in the wordlist or not vaild
+                self.empty_current_word()
+                return False
+            # if the match was succesful reset the char index 
             self.current_char_index = 0
             self.current_word_index += 1
-            return self.update_last_match()
+            return match
+
+
+    def empty_current_word(self):
+        self.word_table[self.current_word_index] = [None for _ in range(5)]
 
     def update_match_list(self):
         """updates the entire match_table"""
@@ -116,15 +141,16 @@ class Player:
                 raise ValueError(f"{word!r} not a valid word")
             self.match_table[index] = match
             
-    def update_last_match(self):
+    def update_current_match(self):
         """updates the match_table for the last word_table entry"""
         self.print_table()
-        print(f"{self.current_word_index-1}")
-        word = ''.join(map(str, self.word_table[self.current_word_index-1]))
+        print(f"{self.current_word_index}")
+        word = ''.join(map(str, self.word_table[self.current_word_index]))
         match = self.match(word)
         if not match:
-            raise ValueError(f"{word!r} is not a valid word")
-        self.match_table[self.current_word_index-1] = match
+            print(f"{word!r} is not a valid word")
+            return False
+        self.match_table[self.current_word_index] = match
         return match
 
     def print_table(self):
