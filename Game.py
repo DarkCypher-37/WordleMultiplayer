@@ -7,25 +7,11 @@ import socket
 import threading
 import struct
 
-import traceback                                               # DEBUG
-
-def debug(obj):                                                # DEBUG
-    d_print("debugging ...")                                   # DEBUG
-    while True:                                                # DEBUG
-        try:                                                   # DEBUG
-            d_print(repr(eval(input())))                       # DEBUG
-        except KeyboardInterrupt:                              # DEBUG
-            d_print("... debugging over")                      # DEBUG
-            break                                              # DEBUG
-        except:                                                # DEBUG
-            traceback.print_exc()                              # DEBUG
 
 def d_print(text):                                             # DEBUG
-    # if True:                                                 # DEBUG
-    if False:                                                  # DEBUG
+    # if False:                                                # DEBUG
+    if True:                                                   # DEBUG
         print(f"DEBUG: {text}")                                # DEBUG
-
-# __all__
 
 class CharStatus(enum.Enum):
     undefined = -1
@@ -231,12 +217,14 @@ class NetworkHandler:
     def __init__(self, client_player, players) -> None:
         self.client_player = client_player
         self.players = players
+        self.magic_number = 0x8b0968b3
+        self.message_types = ['j', 'k', 'l', 'm', 'r', 'u', 'c', 'w', 'l']
         # create a ipv4 TCP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
         # bind the socket to '' (meaning INADDR_ANY, binding to all interfaces)
         # and port 0, which lets the os chose a port
         self.sock.bind(('', 0))
-        print(f"{self.sock.getsockname()=}")                        # DEBUG
+        d_print(f"{self.sock.getsockname()=}")                        # DEBUG
         # setting up a kind of queue for a socket, so if several connections are trying to communicate simultainiously, they will be handled sequentially
         self.sock.listen()
         # make the socket non-blocking, as select will be 'polling' the sockets
@@ -248,9 +236,11 @@ class NetworkHandler:
         self.handle()
 
         # DEBUG to send data
+        # self.magic_number = 0x8b0968b3
+        # self.message_types = ['j', 'k', 'l', 'm', 'r', 'u', 'c', 'w', 'l']
         # self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
         # self.sock.connect(('localhost', int(input())))
-        # self.send_data(self.sock)        
+        # self.send_message(self.sock)        
 
     def handle(self):
         # iterate until inputs are empty, meaning (hopefully) the socket has been closed
@@ -267,7 +257,7 @@ class NetworkHandler:
                     connection.setblocking(False)
                     # appending the connection to the inputs
                     self.inputs.append(connection)
-                    print(f"connection from {remote_address}")      # DEBUG
+                    d_print(f"connection from {remote_address}")      # DEBUG
                 else:
                     # recieve 1024 bytes
                     # player_id, data = self.recieve_data()
@@ -275,7 +265,8 @@ class NetworkHandler:
             
             for sock in writable_sockets:
                 # check if there is data to send then send it
-                self.send_data(sock)
+                # self.handle_sending_data(sock)
+                pass
             
             for sock in exceptional_sockets:
                 # should not happen, if it does we just close the connection
@@ -284,51 +275,83 @@ class NetworkHandler:
 
         # when this is reached the socket should be closed
         
-    def send_data(self, sock):
+    def handle_sending_data(self):
+        """handles the sending of data"""
+        pass
+    
+    def send_message(self, sock):
         """
         send one message
-
+        # TODO: Add gamekey
         layout: 
-            magic number |  size  |   identifier    | message type |       message
-            4bytes    | 4bytes |     8bytes      |     1byte    | length given in {size}
-                uInt     |  uInt  |   u Long Long   |     char     |        char[]
-         -> !IIQb 
+            magic number |  size  |     gamekey     |   identifier    | message type |       message
+               4bytes    | 4bytes |     8bytes      |     8bytes      |     1byte    | length given in {size}
+                uInt     |  uInt  |   u Long Long   |   u Long Long   |     char     |        char[]
+         -> "!IIQQb"
 
         magic number:
             always exactly: 0x8b0968b3
 
         message types:
-            j (join):  request to join the game
-            c (char):  transmits one char
-            w (word):  transmits one word (5 chars)
+            j (join request)      :  request to join the game
+                - username
+                - gamekey
+                - identifier = 0 (not set)
+
+            k (join response)     :  response to a join request
+                - no
+                    - reason
+                - yes
+                    - identifier for the new player
+                    - list of players (IP + Port)
+                    
+            l (join note)         :  note to all players after
+                - username
+
+            m (join note response):  
+                - username
+
+            r (ready)             :  transmits a notice to all players that one player is ready to play
+                - time as Unicode timestamp
+
+            u (unready)           :  transmits a notice to all players that one player is not ready anymore
+            c (char)              :  transmits one char
+            w (word)              :  transmits one word (5 chars)
+            l (leave)             :  transmits a notice of leaving the network
+        all types: ['j', 'k', 'l', 'm', 'r', 'u', 'c', 'w', 'l']
         """
-        magic_number = 0x8b0968b3
-        format = "!IIQb"
+        format = "!IIQQb"
 
         # TODO: get messages to be sent when needed
+        # TODO: move to appropiate places (zb. identifier to MultiPlayer, gamekey to self?, message type to argument?)
 
         message = "hello world"       # EXAMPLE
+        gamekey = 0xf272b57cc9fd9580  # EXAMPLE
         identifier = 404              # EXAMPLE
         message_type = ord('j')       # EXAMPLE
 
         # uses ! for network byte order
         # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
-        print(f"struct: {hex(magic_number), len(message), identifier, message_type}")
-        data = struct.pack(format, magic_number, len(message), identifier, message_type)
+        data = struct.pack(format, self.magic_number, len(message), gamekey, identifier, message_type)
         sock.sendall(data + bytes(message, "utf_8"))
-        print(data)
+
+        d_print(f"struct: {hex(self.magic_number), len(message), hex(gamekey), identifier, chr(message_type)}") # DEBUG
+        # d_print(f"struct: {struct.unpack(format, data)}")              # DEBUG
+        d_print(data)                                                    # DEBUG
 
     def recieve_data(self, sock):
         """recieve one message and handle it accordingly"""
         # set socket to blocking, to recieve more than one time
+        # TODO: could be done in one recieve !!
         sock.setblocking(True)
         
         # uses ! for network byte order
         # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
-        magic_number, size, identifier, message_type = struct.unpack("!IIQb", sock.recv(4+4+8+1))
+        format = "!IIQQb"
+        magic_number, size, gamekey, identifier, message_type = struct.unpack(format, sock.recv(4+4+8+8+1))
         message_type = chr(message_type)
 
-        if magic_number != 0x8b0968b3:
+        if magic_number != self.magic_number:
             # if the magic number doesnt match it is likely that something went wrong
             self.inputs.remove(sock)
             sock.close() 
@@ -341,16 +364,105 @@ class NetworkHandler:
         sock.setblocking(False)
 
         # TODO: handle the message
-        if message_type in ('j', 'c', 'w'):
-            print(hex(magic_number), size, identifier, message_type)
-            print(data)
+        if message_type in self.message_types:
+            d_print(f"{hex(magic_number), size, hex(gamekey), identifier, message_type}")
+            d_print(data)
         else:
-            print(f"{message_type!r} unkown message type")
+            d_print(f"{message_type!r} unkown message type")
 
         # close the socket
         self.inputs.remove(sock)
         sock.close()
         exit()
+
+
+    # TODO: fill out the following methods
+    # TODO: figure out how to notify the GameLogic of a new Player joinnig
+    # TODO: test out the NetworkHandler in a new thread
+
+    def join_network(self, remote_address, gamekey):
+        """join an already existing network"""
+        pass
+
+    def create_network(self):
+        """create a new network"""
+        # return local_address, gamekey
+        pass
+
+
+    def handle_join_request_message(self):
+        """handles the recieving of a join message"""
+        pass
+
+    def handle_join_response_message(self):
+        """handles the recieving of a join_response message"""
+        pass
+
+    def handle_join_note_message(self):
+        """handles the recieving of a join_note message"""
+        pass
+
+    def handle_join_note_response_message(self):
+        """handles the recieving of a join_note_response message"""
+        pass
+
+
+    def handle_char_message(self, char, identifier):
+        """handles the recieving of a char message"""
+        pass
+
+    def handle_word_message(self, word, identifier):
+        """handles the recieving of a word message"""
+        pass
+
+
+    def handle_ready_message(self):
+        pass
+
+    def handle_unready_message(self):
+        pass
+
+
+    def handle_leave_message(self):
+        pass
+
+
+
+    def send_join_request_message(self):
+        """sends a join message"""
+        pass
+
+    def send_join_response_message(self):
+        """sends a join_response message"""
+        pass
+
+    def send_join_note_message(self):
+        """sends a join_note message"""
+        pass
+
+    def send_join_note_response_message(self):
+        """sends a join_note_response message"""
+        pass
+
+
+    def send_char_message(self, char, identifier):
+        """sends a char message"""
+        pass
+
+    def send_word_message(self, word, identifier):
+        """sends a word message"""
+        pass
+
+
+    def send_ready_message(self):
+        pass
+
+    def send_unready_message(self):
+        pass
+
+
+    def send_leave_message(self):
+        pass
 
 
 class GUI(arcade.Window):
@@ -368,7 +480,5 @@ class GUI(arcade.Window):
         return super().on_update(delta_time)
 
 if __name__ == "__main__":
-    # game = Game()
-    # game.match("tadal")
     p = Player("tadal")
     nh = NetworkHandler(p, [p])
