@@ -2,6 +2,10 @@ import random
 import enum
 import arcade
 import queue
+import select
+import socket
+import threading
+import struct
 
 import traceback                                               # DEBUG
 
@@ -20,6 +24,8 @@ def d_print(text):                                             # DEBUG
     # if True:                                                 # DEBUG
     if False:                                                  # DEBUG
         print(f"DEBUG: {text}")                                # DEBUG
+
+# __all__
 
 class CharStatus(enum.Enum):
     undefined = -1
@@ -198,6 +204,17 @@ class MultiPlayer(Player):
     # potentially ???
     def __init__(self, solution_word) -> None:
         super().__init__(solution_word)
+        self.identifier = "" # used to uniquely identify the player
+        self.username = ""
+        # in queue for thread safe handling/storing the recieved chars 
+        self.InQueue = queue.Queue()
+        # in queue for thread safe handling/storing the to be sent chars 
+        self.outQueue = queue.Queue()
+
+    def add_char(self, char: str):
+        # return super().add_char(char)
+        pass
+
 
 class BotPlayer(Player):
     # potentially ???
@@ -207,17 +224,139 @@ class BotPlayer(Player):
 
 class NetworkHandler:
     """
-    two threads?
+    potentially two threads?
 
     """
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, client_player, players) -> None:
+        self.client_player = client_player
+        self.players = players
+        # create a ipv4 TCP socket
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
+        # bind the socket to '' (meaning INADDR_ANY, binding to all interfaces)
+        # and port 0, which lets the os chose a port
+        self.sock.bind(('', 0))
+        print(f"{self.sock.getsockname()=}")                        # DEBUG
+        # setting up a kind of queue for a socket, so if several connections are trying to communicate simultainiously, they will be handled sequentially
+        self.sock.listen()
+        # make the socket non-blocking, as select will be 'polling' the sockets
+        self.sock.setblocking(False)
+        # storing all sockets which could be recieving data from a remote
+        self.inputs = [self.sock]
+        # storing all sockets which could be sending data to a remote
+        self.outputs = []
+        self.handle()
+
+        # DEBUG to send data
+        # self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
+        # self.sock.connect(('localhost', int(input())))
+        # self.send_data(self.sock)        
+
+    def handle(self):
+        # iterate until inputs are empty, meaning (hopefully) the socket has been closed
+        while self.inputs:
+            # sockets will be added to readable if there is data to be read
+            # sockets will be added to writable if data could be sent
+            # if <data to be sent> :
+            #     outputs.append(...)
+            readable_sockets, writable_sockets, exceptional_sockets = select.select(self.inputs, self.outputs, self.inputs) # timeout: float = 
+            for sock in readable_sockets:
+                if sock == self.sock:
+                    # if the socket is the 'base'socket, we have a new connection to accept
+                    connection, remote_address = sock.accept()
+                    connection.setblocking(False)
+                    # appending the connection to the inputs
+                    self.inputs.append(connection)
+                    print(f"connection from {remote_address}")      # DEBUG
+                else:
+                    # recieve 1024 bytes
+                    # player_id, data = self.recieve_data()
+                    self.recieve_data(sock)
+            
+            for sock in writable_sockets:
+                # check if there is data to send then send it
+                self.send_data(sock)
+            
+            for sock in exceptional_sockets:
+                # should not happen, if it does we just close the connection
+                self.inputs.remove(sock)
+                sock.close()
+
+        # when this is reached the socket should be closed
+        
+    def send_data(self, sock):
+        """
+        send one message
+
+        layout: 
+            magic number |  size  |   identifier    | message type |       message
+            4bytes    | 4bytes |     8bytes      |     1byte    | length given in {size}
+                uInt     |  uInt  |   u Long Long   |     char     |        char[]
+         -> !IIQb 
+
+        magic number:
+            always exactly: 0x8b0968b3
+
+        message types:
+            j (join):  request to join the game
+            c (char):  transmits one char
+            w (word):  transmits one word (5 chars)
+        """
+        magic_number = 0x8b0968b3
+        format = "!IIQb"
+
+        # TODO: get messages to be sent when needed
+
+        message = "hello world"       # EXAMPLE
+        identifier = 404              # EXAMPLE
+        message_type = ord('j')       # EXAMPLE
+
+        # uses ! for network byte order
+        # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
+        print(f"struct: {hex(magic_number), len(message), identifier, message_type}")
+        data = struct.pack(format, magic_number, len(message), identifier, message_type)
+        sock.sendall(data + bytes(message, "utf_8"))
+        print(data)
+
+    def recieve_data(self, sock):
+        """recieve one message and handle it accordingly"""
+        # set socket to blocking, to recieve more than one time
+        sock.setblocking(True)
+        
+        # uses ! for network byte order
+        # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
+        magic_number, size, identifier, message_type = struct.unpack("!IIQb", sock.recv(4+4+8+1))
+        message_type = chr(message_type)
+
+        if magic_number != 0x8b0968b3:
+            # if the magic number doesnt match it is likely that something went wrong
+            self.inputs.remove(sock)
+            sock.close() 
+
+        # make sure all data in the message was recieved, as it is not guaranteed to be within one sock.recv()
+        data = bytes()
+        while len(data) < size:
+            data += sock.recv(size)
+
+        sock.setblocking(False)
+
+        # TODO: handle the message
+        if message_type in ('j', 'c', 'w'):
+            print(hex(magic_number), size, identifier, message_type)
+            print(data)
+        else:
+            print(f"{message_type!r} unkown message type")
+
+        # close the socket
+        self.inputs.remove(sock)
+        sock.close()
+        exit()
+
 
 class GUI(arcade.Window):
 
     def __init__(self, width: int = 800, height: int = 600, 
-                 title: str = 'Arcade Window', fullscreen: bool = False, 
+                 title: str = 'Wordle Clone', fullscreen: bool = False, 
                  resizable: bool = False, update_rate = 1 / 60, 
                  antialiasing: bool = True):
         super().__init__(width, height, title, fullscreen, resizable, update_rate, antialiasing)
@@ -230,5 +369,6 @@ class GUI(arcade.Window):
 
 if __name__ == "__main__":
     # game = Game()
-    pass
     # game.match("tadal")
+    p = Player("tadal")
+    nh = NetworkHandler(p, [p])
