@@ -1,21 +1,25 @@
-#! /usr/bin/python3
-
 import random
 import enum
 import arcade
+import queue
 
-import traceback
+import traceback                                               # DEBUG
 
-def debug(obj):
-    print("debugging ...")
-    while True:
-        try:
-            print(repr(eval(input())))
-        except KeyboardInterrupt:
-            print("... debugging over")
-            break
-        except:
-            traceback.print_exc()
+def debug(obj):                                                # DEBUG
+    d_print("debugging ...")                                   # DEBUG
+    while True:                                                # DEBUG
+        try:                                                   # DEBUG
+            d_print(repr(eval(input())))                       # DEBUG
+        except KeyboardInterrupt:                              # DEBUG
+            d_print("... debugging over")                      # DEBUG
+            break                                              # DEBUG
+        except:                                                # DEBUG
+            traceback.print_exc()                              # DEBUG
+
+def d_print(text):                                             # DEBUG
+    # if True:                                                 # DEBUG
+    if False:                                                  # DEBUG
+        print(f"DEBUG: {text}")                                # DEBUG
 
 class CharStatus(enum.Enum):
     undefined = -1
@@ -46,35 +50,25 @@ class Game:
 
     def __init__(self) -> None:
         self.wordlist = WordList()
+        # self.player_count = player_count
         self.players = [] # list of players
         self.start_round()
 
     def start_round(self):
         self.solution_word = self.wordlist.get_random_word()
         self.players.append(Player(self.solution_word))
-        # self.solution_word = "thaal"                              # DEBUG
-        print(f"DEBUG solution: {self.solution_word}")              # DEBUG
+        # self.solution_word = "thaal"                                # DEBUG
+        d_print(f"DEBUG solution: {self.solution_word}")              # DEBUG
         self.game_loop()
 
     def game_loop(self):
         """temporary game loop"""
         while True:
             char = input()
-            print(f"-> {char=}")
+            d_print(f"-> {char=}")            # DEBUG
             if self.players[0].add_char(char) == [2, 2, 2, 2, 2]:
                 print("player won!!!")
                 break
-        # for _ in range(6):
-        #     match = False
-        #     while not match:
-        #         # wait for valid input
-        #         guess = input()
-        #         match = self.match(guess)
-        #     if match == [2, 2, 2, 2, 2]:
-        #         print("GAME WON!!!")
-        #         break
-        #     print(''.join([str(i.value) for i in match]))       # DEBUG
-        # print("loop over")
 
 
 class Player:
@@ -82,9 +76,8 @@ class Player:
     def __init__(self, solution_word) -> None:
         self.wordlist = WordList()
         self.solution_word = solution_word
-        # self.word_table = [[None] * 5] * 6 # 5 by 6 table of the words
+        self.vaild_chars = "abcdefghijklmnopqrstuvwxyz"
         self.word_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words
-        # self.match_table = [[None] * 5] * 6 # 5 by 6 table of the words's status
         self.match_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words's status
         self.current_word_index = 0
         self.current_char_index = 0
@@ -94,29 +87,36 @@ class Player:
         if self.current_word_index > 5:
             raise Exception("word list too full!")
 
+        # add word to word_table
         self.word_table[self.current_word_index] = list(word)
         self.current_word_index += 1
         self.update_match_list()
 
     def add_char(self, char:str):
         """add a character to the current position on the word_table"""
+
+        char = char.casefold()
+
         if self.current_word_index > 5:
             raise Exception("word list too full!")
         if self.current_char_index > 4:
             raise Exception("char list too full!")
-        print(f"{len(char)=}")
-        if len(char) > 1: # may not be nessecary
+        if len(char) > 1:
+            # may not be nessecary
             raise ValueError(f"{char!r} is too long to be a char")
+        if char not in self.vaild_chars:
+            # check for letter through a .. z
+            # maybe should raise ValueError ?
+            d_print(f"{char} not in the alphabet!")       # DEBUG
+            return False
 
-        # TODO: check for letter through a .. z and .lower() 
-
-        print("executed once")
+        # add the char to the word_table
         self.word_table[self.current_word_index][self.current_char_index] = char
         self.current_char_index += 1
-        self.print_table()
+        self.print_table() # DEBUG
 
         if self.current_char_index >= 5:
-            print("reached max char_index")
+            d_print("reached max char_index")         # DEBUG
             # when the end of a word is reached, check for a word match
             match = self.update_current_match()
             if not match:
@@ -130,7 +130,9 @@ class Player:
 
 
     def empty_current_word(self):
+        """reset the current word from the word_table"""
         self.word_table[self.current_word_index] = [None for _ in range(5)]
+        self.current_char_index = 0
 
     def update_match_list(self):
         """updates the entire match_table"""
@@ -140,22 +142,21 @@ class Player:
             if not match:
                 raise ValueError(f"{word!r} not a valid word")
             self.match_table[index] = match
-            
+
     def update_current_match(self):
         """updates the match_table for the last word_table entry"""
-        self.print_table()
-        print(f"{self.current_word_index}")
+        # gets the last word from the word_table as  a string
         word = ''.join(map(str, self.word_table[self.current_word_index]))
         match = self.match(word)
         if not match:
-            print(f"{word!r} is not a valid word")
+            d_print(f"{word!r} is not a valid word")  # DEBUG
             return False
         self.match_table[self.current_word_index] = match
         return match
 
     def print_table(self):
-        # print("\n".join([w for w in self.word_table]))
-        print('\n'.join(''.join(list(map(str, w))) for w in self.word_table).replace("None", '_'))
+        """prints out the word_table, for debug purposes"""
+        print('\n'.join(''.join(list(map(str, word))) for word in self.word_table).replace("None", '_'))
 
     def match(self, guess:str):
         """ 
@@ -166,7 +167,7 @@ class Player:
         solution_copy = self.solution_word
 
         if not self.wordlist.contains(guess):
-            print(f"{guess} is not a word in wordlist!!")                               # DEBUG
+            d_print(f"{guess} is not a word in wordlist!!")                               # DEBUG
             return False
 
         # first filter out all letters with correct position
@@ -187,25 +188,47 @@ class Player:
                 result[index] = CharStatus.word_contains
 
 
-        print(f"solution: {self.solution_word}")                            # DEBUG
-        print(f"          {''.join([str(i.value) for i in result])}")       # DEBUG
-        print(f"guess:    {guess}")                                         # DEBUG
+        d_print(f"solution: {self.solution_word}")                            # DEBUG
+        d_print(f"          {''.join([str(i.value) for i in result])}")       # DEBUG
+        d_print(f"guess:    {guess}")                                         # DEBUG
 
         return result
 
-class MultiPlayer:
+class MultiPlayer(Player):
     # potentially ???
-    pass
-class BotPlayer:
+    def __init__(self, solution_word) -> None:
+        super().__init__(solution_word)
+
+class BotPlayer(Player):
     # potentially ???
-    pass
+    def __init__(self, solution_word) -> None:
+        super().__init__(solution_word)
+
+
 class NetworkHandler:
-    pass
+    """
+    two threads?
+
+    """
+
+    def __init__(self) -> None:
+        pass
 
 class GUI(arcade.Window):
 
-    pass
+    def __init__(self, width: int = 800, height: int = 600, 
+                 title: str = 'Arcade Window', fullscreen: bool = False, 
+                 resizable: bool = False, update_rate = 1 / 60, 
+                 antialiasing: bool = True):
+        super().__init__(width, height, title, fullscreen, resizable, update_rate, antialiasing)
+
+    def on_draw(self):
+        return super().on_draw()
+
+    def on_update(self, delta_time: float):
+        return super().on_update(delta_time)
 
 if __name__ == "__main__":
-    game = Game()
+    # game = Game()
+    pass
     # game.match("tadal")
