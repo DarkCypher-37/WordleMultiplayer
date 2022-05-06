@@ -55,6 +55,7 @@ class Game:
 
     def game_loop(self):
         """temporary game loop"""
+        # TODO: check for new players in the player queue
         while True:
             char = input()
             d_print(f"-> {char=}")            # DEBUG
@@ -68,7 +69,7 @@ class Player:
     def __init__(self, solution_word) -> None:
         self.wordlist = WordList()
         self.solution_word = solution_word
-        self.vaild_chars = "abcdefghijklmnopqrstuvwxyz"
+        self.valid_chars = "abcdefghijklmnopqrstuvwxyz"
         self.word_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words
         self.match_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words's status
         self.current_word_index = 0
@@ -96,7 +97,7 @@ class Player:
         if len(char) > 1:
             # may not be nessecary
             raise ValueError(f"{char!r} is too long to be a char")
-        if char not in self.vaild_chars:
+        if char not in self.valid_chars:
             # check for letter through a .. z
             # maybe should raise ValueError ?
             d_print(f"{char} not in the alphabet!")       # DEBUG
@@ -187,15 +188,14 @@ class Player:
         return result
 
 class MultiPlayer(Player):
-    # potentially ???
-    def __init__(self, solution_word) -> None:
+    
+    def __init__(self, solution_word, identifier, username) -> None:
         super().__init__(solution_word)
-        self.identifier = "" # used to uniquely identify the player
-        self.username = ""
-        # in queue for thread safe handling/storing the recieved chars 
-        self.InQueue = queue.Queue()
-        # in queue for thread safe handling/storing the to be sent chars 
-        self.outQueue = queue.Queue()
+        self.username = username
+        self.identifier = 0              # used to uniquely identify the player
+        self.remote_address = None       # tuple(IP_address, Port) # TODO set the remote address during join process
+        self.add_queue = queue.Queue()     # in queue for thread safe handling/storing the recieved newly added chars 
+        self.remove_queue = queue.Queue()     # in queue for thread safe handling/storing the recieved newly removed chars 
 
     def add_char(self, char: str):
         # return super().add_char(char)
@@ -208,50 +208,111 @@ class BotPlayer(Player):
         super().__init__(solution_word)
 
 
-class NetworkHandler:
+class NetworkHandler(threading.Thread):
     """
-    potentially two threads?
+    Handles the Network stuff in a seperate thread
 
     """
 
-    def __init__(self, client_player, players) -> None:
-        self.client_player = client_player
-        self.players = players
+    def __init__(
+            self, new_player_queue: queue.Queue,
+            remove_player_queue: queue.Queue,
+            send_add_queue: queue.Queue,
+            send_remove_queue: queue.Queue,
+            ready_event: threading.Event,
+            unready_event: threading.Event,
+            leave_event: threading.Event
+        ) -> None:
+        """
+        initialize. the client player has to be in the queue
+        then create_socket()
+        then join_network() or create_network()
+        then run handle() continiously with self.start()
+        """
+        super().__init__(target=self.handle)
+
+        self.new_player_queue = new_player_queue
+        self.remove_player_queue = remove_player_queue
+        self.send_add_queue = send_add_queue
+        self.send_remove_queue = send_remove_queue
+        self.ready_event = ready_event
+        self.unready_event = unready_event
+        self.leave_event = leave_event
+
+        self.players = {}
+        self.message_queue = queue.Queue()
+
+        # store the client player in the players list
+        player = self.new_player_queue.get()
+        self.players[player.identifier] = player
+        # store the identifier of the clients player
+        self.client_player_identifier = player.identifier
+
+        self.has_joined_a_network = False
+
         self.magic_number = 0x8b0968b3
-        self.message_types = ['j', 'k', 'l', 'm', 'r', 'u', 'c', 'w', 'l']
+        self.message_types = ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l']
+
         # create a ipv4 TCP socket
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
         # bind the socket to '' (meaning INADDR_ANY, binding to all interfaces)
         # and port 0, which lets the os chose a port
-        self.sock.bind(('', 0))
-        d_print(f"{self.sock.getsockname()=}")                        # DEBUG
+        self.socket.bind(('', 0))
+        d_print(f"{self.socket.getsockname()=}")                        # DEBUG
         # setting up a kind of queue for a socket, so if several connections are trying to communicate simultainiously, they will be handled sequentially
-        self.sock.listen()
+        self.socket.listen()
         # make the socket non-blocking, as select will be 'polling' the sockets
-        self.sock.setblocking(False)
+        self.socket.setblocking(False)
         # storing all sockets which could be recieving data from a remote
-        self.inputs = [self.sock]
+        self.inputs = [self.socket]
         # storing all sockets which could be sending data to a remote
         self.outputs = []
-        self.handle()
 
         # DEBUG to send data
         # self.magic_number = 0x8b0968b3
         # self.message_types = ['j', 'k', 'l', 'm', 'r', 'u', 'c', 'w', 'l']
-        # self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
-        # self.sock.connect(('localhost', int(input())))
-        # self.send_message(self.sock)        
+        # self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
+        # self.socket.connect(('localhost', int(input())))
+        # self.send_message(self.socket)  
+
+              
+    # def add_players_from_queue(self):
+    #     """adding players from the queue to the self.players dict. may be redundant because adding new players is handled by another function"""
+    #     while not self.new_player_queue.empty:
+    #         # TODO: REDUNDANT method
+    #         # maybe if this is really needed
+    #         # most likely the NetworkHandler will be initialized without players in new_player_queue
+    #         player = self.new_player_queue.get()
+    #         self.players[player.identifier] = player
+
+    def add_player(self, player: MultiPlayer):
+        """add a player to the player dict and to the new_player_queue"""
+        self.new_player_queue.put(player)
+        self.players[player.identifier] = player
+
+    def remove_player(self, player):
+        """remove a player from the player dict and adds the player to the remove_player_queue"""
+        self.remove_player_queue.put(player)
+        self.players.pop(player.identifier)
 
     def handle(self):
+        print("started handling ...")
+        """continously handle incoming and outgoing messages"""
         # iterate until inputs are empty, meaning (hopefully) the socket has been closed
         while self.inputs:
             # sockets will be added to readable if there is data to be read
             # sockets will be added to writable if data could be sent
-            # if <data to be sent> :
-            #     outputs.append(...)
-            readable_sockets, writable_sockets, exceptional_sockets = select.select(self.inputs, self.outputs, self.inputs) # timeout: float = 
+            # if self.data_to_be_sent(): ??
+            #     outputs.append(...)    ??
+            # FIXME: when something is continously in the outputs list, it kinda defeats the whole point of using select()
+
+            # loop over message_queue
+            #    make a connection to each entry(by identifier)
+            #    add to self.outputs list 
+
+            readable_sockets, writable_sockets, exceptional_sockets = select.select(self.inputs, self.outputs, self.inputs, ) # timeout: float = 
             for sock in readable_sockets:
-                if sock == self.sock:
+                if sock == self.socket:
                     # if the socket is the 'base'socket, we have a new connection to accept
                     connection, remote_address = sock.accept()
                     connection.setblocking(False)
@@ -264,30 +325,49 @@ class NetworkHandler:
                     self.recieve_data(sock)
             
             for sock in writable_sockets:
-                # check if there is data to send then send it
-                # self.handle_sending_data(sock)
-                pass
-            
+                # TODO: check if there is data to send then send it
+                self.handle_send_ready_unready_leave()
+                self.handle_sending_add_remove_queue(sock)
+                
             for sock in exceptional_sockets:
                 # should not happen, if it does we just close the connection
-                self.inputs.remove(sock)
+                if sock in self.inputs:
+                    self.inputs.remove(sock)
+                else:
+                    self.outputs.remove(sock)
                 sock.close()
+        print(f"lost the socket: {readable_sockets, writable_sockets, exceptional_sockets}")     # DEBUG
+        # when this is reached the socket should have been closed      
 
-        # when this is reached the socket should be closed
-        
-    def handle_sending_data(self):
-        """handles the sending of data"""
+    def handle_send_ready_unready_leave():
+        # TODO
         pass
-    
-    def send_message(self, sock):
+
+    def handle_sending_add_remove_queue(self, sock: socket.socket):
+        """handles the sending of data"""
+        # checks if there is a new char to be sent
+        while len(self.send_add_queue.queue) > 0:
+            # sends the last item from the send_add_queue to all players
+            char = self.send_add_queue.get()
+            for player in self.players:
+                self.send_char_add_message(sock, char, player.identifier)
+
+        # checks if there was a char removed (from the current word)
+        while len(self.send_remove_queue.queue) > 0:
+            # sends the last item from the send_remove_queue to all players
+            char = self.send_remove_queue.get()
+            for player in self.players:
+                self.send_char_remove_message(sock, char, player.identifier)
+
+    def send_message(self, connected_socket: socket.socket, message_type: str, message: str, sender_identifier: int=None):
         """
-        send one message
-        # TODO: Add gamekey
+        send one message to a socket
+
         layout: 
             magic number |  size  |     gamekey     |   identifier    | message type |       message
                4bytes    | 4bytes |     8bytes      |     8bytes      |     1byte    | length given in {size}
                 uInt     |  uInt  |   u Long Long   |   u Long Long   |     char     |        char[]
-         -> "!IIQQb"
+        format -> "!IIQQb"
 
         magic number:
             always exactly: 0x8b0968b3
@@ -295,60 +375,73 @@ class NetworkHandler:
         message types:
             j (join request)      :  request to join the game
                 - username
-                - gamekey
-                - identifier = 0 (not set)
+                - (gamekey)
+                - (identifier = 0 (not set))
 
-            k (join response)     :  response to a join request
-                - no
-                    - reason
-                - yes
-                    - identifier for the new player
-                    - list of players (IP + Port)
-                    
-            l (join note)         :  note to all players after
+            k (join response accept):  send back an accept after a join request
+                - identifier for the new player
+                - list of players (IP + Port)
+               
+            l (join response deny) :  send back a deny after a join request
+                - reason
+
+            m (join note)         :  note to all players after
                 - username
 
-            m (join note response):  
+            n (join note response):  
                 - username
 
-            r (ready)             :  transmits a notice to all players that one player is ready to play
+            r (ready)             :  transmits a notice to all players that one player is ready to play or to restart
                 - time as Unicode timestamp
 
             u (unready)           :  transmits a notice to all players that one player is not ready anymore
-            c (char)              :  transmits one char
+            c (char add)          :  transmits one char to be added
+            d (char remove)       :  transmits one char to be removed
             w (word)              :  transmits one word (5 chars)
             l (leave)             :  transmits a notice of leaving the network
-        all types: ['j', 'k', 'l', 'm', 'r', 'u', 'c', 'w', 'l']
+        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l']
         """
+        if sender_identifier is None:
+            sender_identifier = self.client_player_identifier
         format = "!IIQQb"
+        message_type = ord(message_type)
 
-        # TODO: get messages to be sent when needed
-        # TODO: move to appropiate places (zb. identifier to MultiPlayer, gamekey to self?, message type to argument?)
+        # message = "hello world"       # EXAMPLE
+        # gamekey = 0xf272b57cc9fd9580  # EXAMPLE
+        # sender_identifier = 404       # EXAMPLE
+        # message_type = ord('j')       # EXAMPLE
 
-        message = "hello world"       # EXAMPLE
-        gamekey = 0xf272b57cc9fd9580  # EXAMPLE
-        identifier = 404              # EXAMPLE
-        message_type = ord('j')       # EXAMPLE
-
+        # pack the metadata into a C-alike struct, to get it in bytes  
         # uses ! for network byte order
         # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
-        data = struct.pack(format, self.magic_number, len(message), gamekey, identifier, message_type)
-        sock.sendall(data + bytes(message, "utf_8"))
+        meta_data = struct.pack(
+            format,
+            self.magic_number,
+            len(message),
+            self.gamekey,
+            sender_identifier,
+            message_type
+        )
+        # connected_socket.sendall(meta_data + bytes(message, "utf_8"))
+        self.message_queue.append()
 
-        d_print(f"struct: {hex(self.magic_number), len(message), hex(gamekey), identifier, chr(message_type)}") # DEBUG
-        # d_print(f"struct: {struct.unpack(format, data)}")              # DEBUG
-        d_print(data)                                                    # DEBUG
+        # d_print(f"struct: {struct.unpack(format, meta_data)}")                                                                # DEBUG
+        d_print(f"struct: {hex(self.magic_number), len(message), hex(self.gamekey), sender_identifier, chr(message_type)}")     # DEBUG
+        d_print(meta_data)                                                                                                      # DEBUG
 
     def recieve_data(self, sock):
         """recieve one message and handle it accordingly"""
+        # TODO: !!! test for empty message !!!
+        # TODO: could be done in one recieve
+
         # set socket to blocking, to recieve more than one time
-        # TODO: could be done in one recieve !!
         sock.setblocking(True)
         
         # uses ! for network byte order
-        # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
+        # consists of ( uInterger + uInterger + uLongLong + uLongLong + char )
         format = "!IIQQb"
-        magic_number, size, gamekey, identifier, message_type = struct.unpack(format, sock.recv(4+4+8+8+1))
+        metadata_length = 4+4+8+8+1
+        magic_number, size, gamekey, identifier, message_type = struct.unpack(format, sock.recv(metadata_length))
         message_type = chr(message_type)
 
         if magic_number != self.magic_number:
@@ -364,6 +457,8 @@ class NetworkHandler:
         sock.setblocking(False)
 
         # TODO: handle the message
+        # TODO: check if self.has_network 
+        # potentially a dict with message_type as keys and functions as their values ?? 
         if message_type in self.message_types:
             d_print(f"{hex(magic_number), size, hex(gamekey), identifier, message_type}")
             d_print(data)
@@ -373,45 +468,130 @@ class NetworkHandler:
         # close the socket
         self.inputs.remove(sock)
         sock.close()
-        exit()
+        exit()                          # DEBUG
 
+    def connect_to_player(self, identifier: int):
+        remote_address = self.players[identifier].remote_address
 
-    # TODO: fill out the following methods
-    # TODO: figure out how to notify the GameLogic of a new Player joinnig
-    # TODO: test out the NetworkHandler in a new thread
+        try:
+            self.socket.connect(remote_address)
+            return True
+        except ConnectionRefusedError:
+            print(f"couldnt connect to {remote_address}, connection refused")
+            return False
 
-    def join_network(self, remote_address, gamekey):
-        """join an already existing network"""
-        pass
+# TODO: fill out the following methods !
+
+    def join_network(self, remote_address, gamekey: int, username: str):
+        """
+        join an already existing network
+        
+        make a socket
+            - 
+
+        send join request to socket
+            - on fail -> ip or port wrong
+        
+        """
+        if self.has_joined_a_network:
+            print("Already part of a Network, leave the current network to join a new one")
+            return False
+
+        identifier = 0
+        self.gamekey = gamekey
+
+        print("join_network() executed")
+        
+        try:
+            # connection is allowed to be blocking, because the thread has not yet started to select.select()
+            connection, address = self.socket.connect(remote_address)
+
+            self.send_message(
+                sock=connection,
+                identifier=identifier,
+                message_type='j',
+                message=username
+            )
+
+            connection.close()
+
+        except ConnectionRefusedError:
+            print(f"tried to join: {remote_address!r} but is not a vaild remote address")
 
     def create_network(self):
         """create a new network"""
+        # TODO
+        self.has_joined_a_network = True
+        self.gamekey = 0xf272b57cc9fd9580 # EXAMPLE
+        print("create_network() executed")
         # return local_address, gamekey
         pass
 
 
-    def handle_join_request_message(self):
-        """handles the recieving of a join message"""
-        pass
+    def handle_join_request_message(self, sock: socket.socket):
+        """handles the recieving of a j (join message)"""
 
-    def handle_join_response_message(self):
-        """handles the recieving of a join_response message"""
+        identifier = 0
+        # generate an unique identifier for the new player
+        identifier_max_val = 2**(8*8)
+        # keep getting random values for the identifier if they are already in use by other players
+        while identifier in self.players.keys() and identifier != 0:
+            # start at 1, because identifier=0 is used for a special case (the join_request message)
+            identifier = random.randint(1, identifier_max_val)
+
+        # DENY or ACCEPT the join
+
+        # send a join_response message
+        # either a deny or accept
+        self.send_message(
+            sock=sock,
+            identifier=identifier,
+            message_type='',
+            message=""
+        )
+
+    def handle_join_accept_message(self, identifier: int, playerlist):
+        """handles the recieving of a k (join_response message)"""
+
+        if len(self.players) != 1:
+            print("playerlist should only contain one entry but contains: {self.players}")
+            return False
+        
+        # switch the identifier to a value decided by another player to avoid identifier conflicts
+        self.players[identifier] = self.players[self.client_player_identifier]
+        del self.players[self.client_player_identifier]
+        self.client_player_identifier = identifier
+        
+        # get all players from the playerlist to the self.players list
+        for player in playerlist:
+            self.add_player(player)
+
+        self.has_joined_a_network = True
+
+    def handle_join_deny_message(self):
+        """handles the recieving of a l (join_response message)"""
+        # TODO: THIS ONE NEXT
+        self.has_joined_a_network = False # unnessecary since never set
         pass
 
     def handle_join_note_message(self):
-        """handles the recieving of a join_note message"""
+        """handles the recieving of a m (join_note message)"""
         pass
 
     def handle_join_note_response_message(self):
-        """handles the recieving of a join_note_response message"""
+        """handles the recieving of a n (join_note_response message)"""
         pass
 
 
-    def handle_char_message(self, char, identifier):
+    def handle_char_add_message(self, char: str, identifier: int):
         """handles the recieving of a char message"""
         pass
 
-    def handle_word_message(self, word, identifier):
+    def handle_char_remove_message(self, char: str, identifier: int):
+        """handles the recieving of a char message"""
+        pass
+
+    def handle_word_message(self, word: str, identifier: int):
         """handles the recieving of a word message"""
         pass
 
@@ -424,12 +604,6 @@ class NetworkHandler:
 
 
     def handle_leave_message(self):
-        pass
-
-
-
-    def send_join_request_message(self):
-        """sends a join message"""
         pass
 
     def send_join_response_message(self):
@@ -445,13 +619,38 @@ class NetworkHandler:
         pass
 
 
-    def send_char_message(self, char, identifier):
-        """sends a char message"""
-        pass
+    def send_char_add_message(self, sock: socket.socket, char: str, identifier: int):
+        """sends a c (char) message"""
+        if not self.connect_to_player(identifier=identifier):
+            return False
 
-    def send_word_message(self, word, identifier):
+        self.send_message(
+            sock=sock,
+            identifier=identifier,
+            message_type='c',
+            message=char
+        )
+
+    def send_char_remove_message(self, sock: socket.socket, char: str, identifier: int):
+        """sends a b (char remove) message"""
+        if not self.connect_to_player(identifier=identifier):
+            return False
+
+        self.send_message(
+            sock=sock,
+            identifier=identifier,
+            message_type='b',
+            message=char
+        )
+
+    def send_word_message(self, sock: socket.socket, word: str, identifier: int):
         """sends a word message"""
-        pass
+        self.send_message(
+            sock=sock,
+            identifier=identifier,
+            message_type='w',
+            message=word
+        )
 
 
     def send_ready_message(self):
@@ -480,5 +679,18 @@ class GUI(arcade.Window):
         return super().on_update(delta_time)
 
 if __name__ == "__main__":
-    p = Player("tadal")
-    nh = NetworkHandler(p, [p])
+    p = MultiPlayer("tadal", 30, "hello")
+
+    new_queue = queue.Queue()
+    new_queue.put(p)
+
+    remove_queue = queue.Queue()
+    send_add_queue = queue.Queue()
+
+    nh = NetworkHandler(new_player_queue    = new_queue,
+                        remove_player_queue = remove_queue,
+                        send_add_queue          = send_add_queue)
+    
+    nh.create_network()
+    nh.join_network("raddr", 0xf272b57cc9fd9580) # EXAMPLE
+    nh.start()
