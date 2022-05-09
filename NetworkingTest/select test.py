@@ -85,7 +85,10 @@ class Net(threading.Thread):
                 if raddr in to_be_sent:
                     messages = to_be_sent[raddr]
                     sock.sendall(bytes(messages.pop(0), 'utf-8'))
-                    del to_be_sent[raddr]
+
+                    if len(messages) == 0:
+                        del to_be_sent[raddr]
+
                     output.remove(sock)
                 
 

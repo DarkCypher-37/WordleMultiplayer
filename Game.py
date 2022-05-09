@@ -368,6 +368,8 @@ class NetworkHandler(threading.Thread):
                4bytes    | 4bytes |     8bytes      |     8bytes      |     1byte    | length given in {size}
                 uInt     |  uInt  |   u Long Long   |   u Long Long   |     char     |        char[]
         format -> "!IIQQb"
+        size <= 2**12 = 4096 bytes
+        total size <= 4 + 4 + 8 + 8 + 1 + 4096 = 4121 bytes
 
         magic number:
             always exactly: 0x8b0968b3
