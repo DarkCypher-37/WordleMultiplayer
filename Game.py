@@ -251,7 +251,7 @@ class NetworkHandler(threading.Thread):
         self.has_joined_a_network = False
 
         self.magic_number = 0x8b0968b3
-        self.message_types = ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l']
+        self.message_types = ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'i']
 
         # create a ipv4 TCP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
@@ -401,7 +401,8 @@ class NetworkHandler(threading.Thread):
             d (char remove)       :  transmits one char to be removed
             w (word)              :  transmits one word (5 chars)
             l (leave)             :  transmits a notice of leaving the network
-        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l']
+            i (err info)          :  note from NetworkCommunicator to Client to report an error
+        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'i']
         """
         if sender_identifier is None:
             sender_identifier = self.client_player_identifier

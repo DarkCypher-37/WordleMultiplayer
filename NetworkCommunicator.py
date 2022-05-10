@@ -4,11 +4,9 @@ import queue
 import threading
 import struct
 
-# FIXME ALL !!!
-
 class NetworkCommunicator(threading.Thread):
 
-    def __init__(self, message_in_queue: queue.LifoQueue, message_out_queue: queue.LifoQueue) -> None:
+    def __init__(self, message_in_queue: queue.LifoQueue, message_out_queue: queue.LifoQueue, temp: int) -> None:
         self.message_in_queue = message_in_queue            # buffer ingoing messages
         self.message_out_queue = message_out_queue          # buffer outgoing messages
 
@@ -19,11 +17,13 @@ class NetworkCommunicator(threading.Thread):
 
         # self.host = s.gethostbyname(s.getfqdn(s.gethostname()))
         # self.host = s.gethostbyname(s.gethostname())
-        self.host = "localhost"                                             # DEBUG
-        self.port = int(input())                                            # DEBUG
+        self.host = "127.0.0.1"                                             # DEBUG
+        # print(f"ownport input: ", end='')
+        # self.port = int(input())                                          # DEBUG
+
+        self.port = temp
 
         self.main_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.main_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self.main_socket.setblocking(False)
 
         self.main_socket.bind((self.host, self.port))
@@ -34,8 +34,6 @@ class NetworkCommunicator(threading.Thread):
         super().__init__(target=self.run, args=())
 
     def run(self) -> None:
-
-        print("aaa")
         
         while self.inputs:
 
@@ -48,23 +46,23 @@ class NetworkCommunicator(threading.Thread):
                     self.out_buffer[remote_address].append(message)
 
                 send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.main_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
                 self.main_socket.setblocking(False)
 
+                # connect_ex should maybe get its own loop
+                # handle messages which never connect()
                 errno = send_socket.connect_ex(remote_address)
                 if errno == 0:
                     print(f"succesfully connect_ex()ed (with {errno=!r})")
-                if errno == 10035:
-                    print(f"{errno=!r} WSAEWOULDBLOCK (ok for non-blocking sockets)")
-                    pass
+                elif errno == 10035:
+                    print(f"{errno=!r}: WSAEWOULDBLOCK (ok for non-blocking sockets)")
+                elif errno == 10061:
+                    print(f"{errno=!r}: WSAECONNREFUSED (most likely server not listening)")
                 else:
                     print(f"some weird error after trying to connect_ex(): {errno=!r}")
                 
                 self.outputs.append(send_socket)
 
             # block until either a socket is ready or until the timeout, to register new entries in the 'self.message_out_queue'
-            # might raise Exception upon timeout                # DEBUG
-            print("select ...")
             readable_sockets, writable_sockets, exceptional_sockets = select.select(self.inputs, self.outputs, self.exc, self.timeout_interval)
 
             for sock in readable_sockets:
@@ -73,28 +71,29 @@ class NetworkCommunicator(threading.Thread):
                     connection, remote_address = sock.accept()
                     print(f"new connection from {remote_address}")
                     connection.setblocking(False)
+                    # append the new connection to the inputs, to let select() put it in readable
                     self.inputs.append(connection)
                 else:
                     # recv data and append to message_out_queue
                     print("recieving data ...")
                     # message = self.recv_all(sock)
-                    message = sock.recv(1024)
+                    message = sock.recv(1024)                   # DEBUG
                     if message:
                         print(f"data: {message=}")
-                        self.message_out_queue.put(message)
+                        self.message_in_queue.put(message)
                     else:
                         self.inputs.remove(sock)
+                        sock.shutdown(socket.SHUT_RDWR)
                         sock.close()
 
             for sock in writable_sockets:
-                # write from out_buffer if raddr matches
-                # if raddr in out_buffer: 
-                #    ...
+                # send (write) from out_buffer if raddr matches
                 remote_address = sock.getpeername()
                 if remote_address in self.out_buffer:
                     messages = self.out_buffer[remote_address]
 
-                    sock.sendall(messages.pop(0))
+                    while len(messages) > 0:
+                        sock.sendall(messages.pop(0))
 
                     if len(messages) == 0:
                         del self.out_buffer[remote_address]
@@ -107,18 +106,16 @@ class NetworkCommunicator(threading.Thread):
                     self.inputs.remove(sock)
                 else:
                     self.outputs.remove(sock)
+                sock.shutdown(socket.SHUT_RDWR)
                 sock.close()
 
-    def recv_all(self, sock) -> tuple:
+    def recv_all(self, sock: socket.socket) -> tuple:
         # get all the data from a message
         # get the size from a package
-        sock.setblocking(False)
+        sock.setblocking(True)
         header = sock.recv(25)
 
         # should potentially timeout - ??
-        # could be used to 
-        # buffer = sock.recv(1024)
-        # header = buffer[:25]
 
         if not header:
             # connection has been closed by remote
@@ -136,40 +133,48 @@ class NetworkCommunicator(threading.Thread):
         if size > 2**12:
             print(f"package too big: {size} bytes > 4096 bytes")
             return False
-        
-        total_bytes_recieved = 0
-        message = bytes()
 
-        # get all the data
-        # FIXME: reads into next packet
-        #        could be fixed by calculating diffrence between 'total_bytes_recieved' and 'size'
-        while total_bytes_recieved < size:
-            data = sock.recv(1024)
-                
-            if not data:
-                # connection most likely closed
-                return False
+        message = sock.recv(size)
+        if not message:
+            return False
 
-            message += data
-
-        self.main_socket.setblocking(False)
+        sock.setblocking(False)
 
         return gamekey, identifier, message_type, message
+
+
+class DebugInput(threading.Thread):
+
+    def __init__(self, message_out_queue: queue.LifoQueue, temp) -> None:
+        self.message_out_queue = message_out_queue          # buffer outgoing messages
+        self.raddr = ('127.0.0.1', temp)
+        super().__init__(target=self.get_input, args=())
+
+    def get_input(self) -> None:
+        self.message_out_queue.put((self.raddr, b"first message!"))
+        print(f"start looking for input...")
+        while True:
+            temp = input()
+            print(f"{temp=}")
+            self.message_out_queue.put((self.raddr, bytes(temp, 'utf-8')))
 
 if __name__ == "__main__":
 
     in_queue = queue.LifoQueue()
     out_queue = queue.LifoQueue()
 
-    # out_queue.put((('localhost', 55555), b"hello world!!"))         # DEBUG
+    print(f"bind on port: ", end='')
+    temp = int(input())
+
+    print(f"send to port: ", end='')
+    temp1 = int(input())
 
     nc = NetworkCommunicator(
         message_in_queue=in_queue,
-        message_out_queue=out_queue)
-        
-    nc2 = NetworkCommunicator(
-        message_in_queue=in_queue,
-        message_out_queue=out_queue)
+        message_out_queue=out_queue,
+        temp=temp)
+
+    inp = DebugInput(out_queue, temp1)
+    inp.start()
 
     nc.start()
-    nc2.start()
