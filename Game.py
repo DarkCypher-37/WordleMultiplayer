@@ -7,6 +7,9 @@ import socket
 import threading
 import struct
 
+# FIXME check if identifier always refers to the correct identifier
+# in a message the SENDER IDENTIFIER is sent
+# FIXME fix terminology for everything message-related
 
 def d_print(text):                                             # DEBUG
     # if False:                                                # DEBUG
@@ -251,7 +254,7 @@ class NetworkHandler(threading.Thread):
         self.has_joined_a_network = False
 
         self.magic_number = 0x8b0968b3
-        self.message_types = ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'i']
+        self.message_types = ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'e']
 
         # create a ipv4 TCP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # maybe use AF_INET6 (ipv6)
@@ -359,17 +362,18 @@ class NetworkHandler(threading.Thread):
             for player in self.players:
                 self.send_char_remove_message(sock, char, player.identifier)
 
-    def send_message(self, connected_socket: socket.socket, message_type: str, message: str, sender_identifier: int=None):
+    def send_message(self, connected_socket: socket.socket, message_type: str, message: str):
         """
         send one message to a socket
 
         layout: 
-            magic number |  size  |     gamekey     |   identifier    | message type |       message
-               4bytes    | 4bytes |     8bytes      |     8bytes      |     1byte    | length given in {size}
-                uInt     |  uInt  |   u Long Long   |   u Long Long   |     char     |        char[]
+            magic number |  size  |     gamekey     | sender_identifier | message type |       message
+               4bytes    | 4bytes |     8bytes      |      8bytes       |     1byte    | length given in {size}
+                uInt     |  uInt  |   u Long Long   |    u Long Long    |     char     |        char[]
         format -> "!IIQQb"
         size <= 2**12 = 4096 bytes
-        total size <= 4 + 4 + 8 + 8 + 1 + 4096 = 4121 bytes
+        header size = exact 25 (4 + 4 + 8 + 8 + 1)
+        total size <= 25 + 4096 = 4121 bytes
 
         magic number:
             always exactly: 0x8b0968b3
@@ -401,11 +405,10 @@ class NetworkHandler(threading.Thread):
             d (char remove)       :  transmits one char to be removed
             w (word)              :  transmits one word (5 chars)
             l (leave)             :  transmits a notice of leaving the network
-            i (err info)          :  note from NetworkCommunicator to Client to report an error
-        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'i']
+            e (err info)          :  note from NetworkCommunicator to Client to report an error
+        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'e']
         """
-        if sender_identifier is None:
-            sender_identifier = self.client_player_identifier
+        sender_identifier = self.client_player_identifier
         format = "!IIQQb"
         message_type = ord(message_type)
 
@@ -417,7 +420,7 @@ class NetworkHandler(threading.Thread):
         # pack the metadata into a C-alike struct, to get it in bytes  
         # uses ! for network byte order
         # consists of (unsigned Interger + unsigned Interger + unsigned Long Long + char
-        meta_data = struct.pack(
+        header = struct.pack(
             format,
             self.magic_number,
             len(message),
@@ -425,12 +428,12 @@ class NetworkHandler(threading.Thread):
             sender_identifier,
             message_type
         )
-        # connected_socket.sendall(meta_data + bytes(message, "utf_8"))
-        self.message_queue.append()
+        # connected_socket.sendall(header + bytes(message, "utf_8"))
+        self.message_queue.append() # FIXME append what
 
-        # d_print(f"struct: {struct.unpack(format, meta_data)}")                                                                # DEBUG
+        # d_print(f"struct: {struct.unpack(format, header)}")                                                                # DEBUG
         d_print(f"struct: {hex(self.magic_number), len(message), hex(self.gamekey), sender_identifier, chr(message_type)}")     # DEBUG
-        d_print(meta_data)                                                                                                      # DEBUG
+        d_print(header)                                                                                                      # DEBUG
 
     def recieve_data(self, sock):
         """recieve one message and handle it accordingly"""
