@@ -9,7 +9,9 @@ def stash(message_string, raddr):
     remote_address = raddr
     gamekey = 0xf272b57cc9fd9580
     sender_identifier = 0xAAAAAAAAAAAAAAAA
-    message_type = ord('a')
+    message_type = 'a'
+
+    message_type = 'l' if message_string == "leave()" else 'a'
 
     message = (
         remote_address,
@@ -52,16 +54,16 @@ if __name__ == "__main__":
         message_in_queue=in_queue,
         message_out_queue=out_queue,
         port=bind_port,
-        timeout_interval=0.5,
-        localhost=True
+        timeout_interval=0.5
     )
 
     q_pr = threading.Thread(target=queue_print, args=(in_queue,))
 
     nc.start()
     q_pr.start()
-    
-    raddr = ("127.0.0.1", to_port)
+    host = "192.168.240.1"
+
+    raddr = (host, to_port)
 
     while True:
         out_queue.put(stash(input(), raddr))

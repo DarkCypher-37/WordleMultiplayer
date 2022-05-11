@@ -5,7 +5,7 @@ import struct
 import threading
 
 # TODO: test if port already in use
-# TODO: close socket if client wants to leave 
+# TODO: make IP version agnostic
 
 class NetworkError(Exception):
     pass
@@ -38,7 +38,7 @@ class NetworkCommunicator(threading.Thread):
 
     """
 
-    def __init__(self, message_in_queue: queue.LifoQueue, message_out_queue: queue.LifoQueue, port: int, timeout_interval: float = 0.5, localhost: bool = False) -> None:
+    def __init__(self, message_in_queue: queue.LifoQueue, message_out_queue: queue.LifoQueue, port: int = 0, timeout_interval: float = 0.5, localhost: bool = False) -> None:
         """ Initialize a NetworkCommunicator
         
         Args:
@@ -49,8 +49,11 @@ class NetworkCommunicator(threading.Thread):
             localhost          (optional)  (bool)            : if True the localhost will be used, for debugging purposes
 
         """
+
+        super().__init__(target=self.run, args=())
+
         # buffer ingoing messages
-        # stores Tuple[remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str]
+        # stores Tuple[remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, byte_message: bytes]
         self.message_in_queue = message_in_queue
         # buffer outgoing messages
         # stores Tuple[remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str]
@@ -58,10 +61,12 @@ class NetworkCommunicator(threading.Thread):
         self.port = port
         self.timeout_interval = timeout_interval
 
+        self.should_close = False
         self.magic_number = 0x8b0968b3
         self.out_buffer = {}            # stores {remote_address: message, ...}
 
         self.host = socket.gethostbyname(socket.gethostname())
+        print(f"{self.host=}")
         if localhost:
             self.host = "127.0.0.1"
 
@@ -74,7 +79,10 @@ class NetworkCommunicator(threading.Thread):
 
         self.inputs, self.outputs, self.exc = [self.main_socket], [], []
 
-        super().__init__(target=self.run, args=())
+    @property
+    def get_port(self):
+        """a getter for the port"""
+        return self.port
 
     def run(self) -> None:
         """'mainloop' of the thread, constantly polling for new entries to the message_out_queue and blocking using select for incoming messages 
@@ -106,11 +114,14 @@ class NetworkCommunicator(threading.Thread):
                     pass
                 elif errno == 10054:
                     # [WinErr 10054]: WSAECONNRESET
-                    self.error_message("[WinErr 10054]: WSAECONNRESET, connection reset by peer (remote)")
+                    self.error_message(f"[WinErr 10054]: WSAECONNRESET, connection reset by peer (remote): {remote_address}")
+                    del self.out_buffer[remote_address]
                 elif errno == 10061:
                     # [WinErr 10061]: WSAECONNREFUSED
-                    self.error_message("[WinErr 10061]: WSAECONNREFUSED target activly refused connction (most likely not a port on which this programm is listening)")
+                    self.error_message(f"[WinErr 10061]: WSAECONNREFUSED target activly refused connction (most likely not a port on which this programm is listening): {remote_address}")
+                    del self.out_buffer[remote_address]
                 else:
+                    # catch remaining errors
                     raise ConnectExError(errno=errno)
                 
                 self.outputs.append(send_socket)
@@ -147,7 +158,7 @@ class NetworkCommunicator(threading.Thread):
                     byte_messages = self.out_buffer[remote_address]
 
                     # send all the messages in the messages list
-                    while len(byte_messages) > 0:
+                    while len(byte_messages):
                         sock.sendall(byte_messages.pop(0))
 
                     # delete the messages list if it is empty
@@ -167,7 +178,11 @@ class NetworkCommunicator(threading.Thread):
                 sock.shutdown(socket.SHUT_RDWR)
                 sock.close()
 
-    def error_message(self, reason:str):
+            # closes the main socket if neccessary
+            if self.should_close:
+                self.close()
+
+    def error_message(self, reason:str) -> None:
         """puts an error message 'e' on the message_in_queue to notify the other thread of an error
 
         an example for a usecase might be a refused connection by the remote
@@ -238,7 +253,7 @@ class NetworkCommunicator(threading.Thread):
 
         return remote_address, gamekey, sender_identifier, message_type, byte_message
 
-    def pack_message(self, remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str):
+    def pack_message(self, remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str) -> tuple:
         """packs the message to a bytes() object
 
         Args:
@@ -257,7 +272,8 @@ class NetworkCommunicator(threading.Thread):
             
         """
 
-        # TODO: capture 'l' (leave) messages and handle them appropiatly
+        if message_type == 'l':
+            self.should_close = True
 
         size = len(message_string)
 
@@ -273,9 +289,17 @@ class NetworkCommunicator(threading.Thread):
             size,
             gamekey,
             sender_identifier,
-            message_type
+            ord(message_type)
         )
 
         byte_message = header + bytes(message_string, 'utf-8')
 
         return remote_address, byte_message
+
+    def close(self) -> None:
+        """closes the socket and ends the thread (by emptying self.inputs)
+
+        """
+
+        while len(self.inputs):
+            self.inputs.pop(-1).close()

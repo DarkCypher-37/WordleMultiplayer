@@ -88,7 +88,7 @@ class Player:
         self.current_word_index += 1
         self.update_match_list()
 
-    def add_char(self, char:str):
+    def add_char(self, char: str):
         """add a character to the current position on the word_table"""
 
         char = char.casefold()
@@ -99,7 +99,7 @@ class Player:
             raise Exception("char list too full!")
         if len(char) > 1:
             # may not be nessecary
-            raise ValueError(f"{char!r} is too long to be a char")
+            raise ValueError(f"too long to be a char: {char!r}")
         if char not in self.valid_chars:
             # check for letter through a .. z
             # maybe should raise ValueError ?
@@ -388,17 +388,17 @@ class NetworkHandler(threading.Thread):
                 - identifier for the new player
                 - list of players (IP + Port)
                
-            l (join response deny) :  send back a deny after a join request
+            m (join response deny) :  send back a deny after a join request
                 - reason
 
-            m (join note)         :  note to all players after
+            n (join note)         :  note to all players after a succesful join
                 - username
 
-            n (join note response):  
+            o (join note response):  
                 - username
 
             r (ready)             :  transmits a notice to all players that one player is ready to play or to restart
-                - time as Unicode timestamp
+                - time as Unicode timestamp (wont work as all should be starting at the same time, not when clicking ready)
 
             u (unready)           :  transmits a notice to all players that one player is not ready anymore
             c (char add)          :  transmits one char to be added
@@ -406,7 +406,11 @@ class NetworkHandler(threading.Thread):
             w (word)              :  transmits one word (5 chars)
             l (leave)             :  transmits a notice of leaving the network
             e (err info)          :  note from NetworkCommunicator to Client to report an error
-        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'e']
+
+            # TODO report start / end times (a won message)
+            # TODO transmit the solution word !!
+
+        all types: ['j', 'k', 'm', 'n', 'o', 'r', 'u', 'c', 'd', 'w', 'l', 'e']
         """
         sender_identifier = self.client_player_identifier
         format = "!IIQQb"

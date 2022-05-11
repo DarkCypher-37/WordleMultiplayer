@@ -50,7 +50,9 @@ class Net(threading.Thread):
 
                 send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 send_socket.setblocking(False)
-                errno = send_socket.connect_ex(('localhost', to_port))
+                
+                host = socket.gethostbyname(socket.gethostname())
+                errno = send_socket.connect_ex((host, to_port))
                 if errno == 0:
                     print(f"succesfully connect_ex()ed (with {errno=!r})")
                 if errno == 10035:
@@ -138,7 +140,9 @@ if __name__ == "__main__":
         # time.sleep(1)
 
     p1 = Player(identifier=identifier, raddr=('gibberish', bind_port))
-    p2 = Player(identifier="404", raddr=('127.0.0.1', to_port))
+    
+    host = socket.gethostbyname(socket.gethostname())
+    p2 = Player(identifier="404", raddr=(host, to_port))
 
     players = [p1, p2]
 
