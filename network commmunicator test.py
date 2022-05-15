@@ -31,11 +31,18 @@ def queue_print(in_queue):
 
 if __name__ == "__main__":
 
+    import socket
+    print(socket.gethostbyname(socket.gethostname()))
+
     # stores Tuple[remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str]
     in_queue = queue.LifoQueue()
     
     # stores as a Tuple[remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str]
     out_queue = queue.LifoQueue()
+
+    print(f"enter IP: ", end='')
+    host = input()
+    print(f"host={host!r}")
 
     print(f"enter or anything: ", end='')
     temp = input()
@@ -61,7 +68,7 @@ if __name__ == "__main__":
 
     nc.start()
     q_pr.start()
-    host = "192.168.240.1"
+    # host = "192.168.240.1"
 
     raddr = (host, to_port)
 

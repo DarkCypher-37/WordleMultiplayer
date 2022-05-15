@@ -193,6 +193,11 @@ class Player:
 class MultiPlayer(Player):
     
     def __init__(self, solution_word, identifier, username) -> None:
+        # TODO:
+        # add unicode-timestamp self.starttime
+        # self.is_ready
+
+
         super().__init__(solution_word)
         self.username = username
         self.identifier = 0              # used to uniquely identify the player

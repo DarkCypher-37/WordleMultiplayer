@@ -1,38 +1,81 @@
-from operator import ne
+from datetime import datetime
+
 import queue
 import random
-import struct
 
-import NetworkCommunicator
+from Player import Player, MultiPlayer
+from NetworkCommunicator import NetworkCommunicator
+
+# TODO the program flow of a join request 
+
+class CouldNotCreateNetwork(Exception):
+    pass
 
 class CouldNotJoinError(Exception):
     pass
 
 class NetworkHandler:
-    def __init__(self, playerlist: list, username: str) -> None:
+    def __init__(self, playerlist: list, username: str, localhost: bool = False) -> None:
+
+        if len(playerlist) != 1:
+            raise ValueError("playerlist can only contain the client player upon creation of the Network Handler")
+
         self.message_in_queue = queue.LifoQueue
         self.message_out_queue = queue.LifoQueue
         self.username = username
 
-        self.network_communicator = NetworkCommunicator.NetworkCommunicator(self.message_in_queue, self.message_out_queue)
-        self.port = self.network_communicator.get_port
+        self.network_communicator = NetworkCommunicator(
+            self.message_in_queue, 
+            self.message_out_queue,
+            localhost=localhost
+        )
 
-        self.client_identifier = None
+        self.port = self.network_communicator.get_port # display the port to the mainloop / game
+
         self.gamekey = None
         self.max_network_size = 5
+        self.game_has_started = False
         self.has_joined_a_network = False
-        self.message_types = ['j', 'k', 'm', 'n', 'o', 'r', 'u', 'c', 'd', 'w', 'l', 'e']
+        self.currently_joining_a_network = False
+        self.message_types = ['j', 'k', 'm', 'n', 'o', 'r', 's', 'u', 'c', 'd', 'w', 'l', 'e']
 
+        self.client_identifier = 0
         self.identifier_to_raddr_dict = {}
         self.identifier_to_player_dict = {}
         for player in playerlist:
             self.identifier_to_raddr_dict[player.identifier] = player.remote_address
             self.identifier_to_player_dict[player.identifier] = player
 
-    def gen_random_bytes(self, byte_count, start = 0):
+    def gen_random_bytes(self, byte_count: int, start: int = 0) -> int:
+        """method to get a specified amount of random bytes
+
+        the highest number to be reuturned is 2**(byte_count*8)
+
+        Args:
+            - byte_count: number of random bytes ot be  returned
+            - start: specifies the smallest possible value to be returnd
+        
+        Returns:
+            - random integer
+
+        """
+
         return random.randint(start, 2 ** (byte_count*8))
 
-    def send_message(self, message_type: str, message_string: str, reciever_identifier: int = None, remote_address: tuple = None) -> None:
+    def send_message(self, message_type: str, message_string: str = None, reciever_identifier: int = None, remote_address: tuple = None) -> None:
+        """adds a message to the message_out_queue
+
+        ## Note:
+        #   use either one of reciever_identifier or remote_address 
+
+        Args:
+            - message_type         : a single char specifying the type of the message
+            - message_string       : the variable length part of the message
+            - reciever_identifier  : the unique identifier for the reciever, use either this or the remote_address
+            - remote_address       : the (IP, PORT) for the reciever, use either this or the reciever_identifier
+        
+        """
+
         """
         stores a message in self.message_out_queue, ready to be sent
 
@@ -70,21 +113,26 @@ class NetworkHandler:
             n (join note response):  
                 - username
 
-            r (ready)             :  transmits a notice to all players that one player is ready to play or to restart
+            s (start game)        : starts a game
                 - time as Unicode timestamp
 
+            r (ready)             :  transmits a notice to all players that one player is ready to play or to restart
             u (unready)           :  transmits a notice to all players that one player is not ready anymore
             c (char add)          :  transmits one char to be added
             d (char remove)       :  transmits one char to be removed
             w (word)              :  transmits one word (5 chars)
             l (leave)             :  transmits a notice of leaving the network
-        all types: ['j', 'k', 'l', 'm', 'n', 'r', 'u', 'c', 'd', 'w', 'l', 'e']
+        all types: ['j', 'k', 'l', 'm', 'n', 'r', 's', 'u', 'c', 'd', 'w', 'l', 'e']
         """
         if remote_address is None:
             if reciever_identifier is None:
-                raise ValueError(f"only one of [remote_address, reciever_identifier} can be None, NOT BOTH")
+                raise ValueError(f"only one of {remote_address, reciever_identifier} can be None, NOT BOTH")
             remote_address = self.identifier_to_raddr_dict[reciever_identifier]
         
+        if message_string is None:
+            print(f"DEBUG: {message_string=} may cause an error or not, idk man")       # DEBUG
+            message_string = ""
+
         sender_identifier = self.client_identifier
 
         message_data = self.gamekey, sender_identifier, message_type, message_string
@@ -92,6 +140,12 @@ class NetworkHandler:
         self.message_out_queue.put(remote_address, *message_data)
 
     def check_for_recieved_messages(self):
+        """checks for new messages and handles them
+
+        to be called every so often from the mainloop
+        
+        """
+
         while self.message_in_queue.not_empty():
             self.handle_recieved_message(self.message_in_queue.get())
 
@@ -100,25 +154,58 @@ class NetworkHandler:
         remote_address, gamekey, sender_identifier, message_type, byte_message = extended_message_data
 
         # TODO prob. a big if statement
-        pass
+        # sort out messages first whether self-player is part of a network / currently joining a network 
 
 
-    def join_network(self, gamekey: int):
-        self.gamekey = gamekey
-        self.has_joined_a_network = 
+    def join_network(self, gamekey: int, remote_address: tuple):
+
+        if self.has_joined_a_network:
+            raise CouldNotJoinError("Could not join, already joining a network")
+        if self.currently_joining_a_network:
+            raise CouldNotJoinError("Could not join, already trying to join a network")
+        else:
+            self.gamekey = gamekey
+            self.send_message_join_request(remote_address)
+        
 
     def create_network(self):
-        self.gamekey = 
-        self.has_joined_a_network = 
+
+        if self.has_joined_a_network:
+            raise CouldNotCreateNetwork("Could not create Network, already joining a network")
+        if self.currently_joining_a_network:
+            raise CouldNotCreateNetwork("Could not create Network, already trying to join a network")
+
+        # switch the client_identifier from a temporary one
+        if self.client_identifier == 0:
+            client_player: MultiPlayer = self.identifier_to_player_dict[0]
+            del self.identifier_to_player_dict[0]
+            del self.identifier_to_raddr_dict[0]
+
+            self.client_identifier = self.gen_random_bytes(byte_count=8, start=1)
+
+            self.identifier_to_raddr_dict[self.client_identifier] = client_player.remote_address
+            self.identifier_to_player_dict[self.client_identifier] = client_player
+
+        self.gamekey = self.gen_random_bytes(8, start=1)
+        self.has_joined_a_network = True
 
     
-    def send_to_all(self, f, *args, include_reciever_address: bool = False):
-        if include_reciever_address:
-            for player in self.identifier_to_player_dict.values():
-                f(player.reciever_address, *args)
-        else:
-            for player in self.identifier_to_player_dict.values():
-                f(*args)
+    def send_to_all(self, send_message_function, *args, include_reciever_identifier: bool = False):
+        """will call a send_message_ ...(*args) to every player in the identifier_to_player_dict (except for the client itself)
+
+        Args:
+            - send_message_function       :  the send_message_ ...()-function to be called for all players
+            - *args                       :  an iterable of the arguments to be passed to the function-'send_message_function'
+            - include_reciever_identifier :  bool, whether to include the reciever identifier as the first argument to the 'send_message_function' 
+        
+        """
+
+        for reciever_identifier, player in zip(self.identifier_to_player_dict.keys(), self.identifier_to_player_dict.values()):
+            if reciever_identifier != self.client_identifier:    # excluding the client itself
+                if include_reciever_identifier:
+                    send_message_function(reciever_identifier, *args)
+                else:
+                    send_message_function(*args)
 
 
     def send_message_join_request(self, remote_address) -> None:
@@ -129,7 +216,7 @@ class NetworkHandler:
         )
 
     def recieved_message_join_request(self, remote_address: tuple):
-        # TODO game already running
+        # TODO send deny if a game is already running
         if not self.has_joined_a_network:
             # send a denial
             self.send_message_join_response_deny(remote_address, "user has not joined a network to connect to")
@@ -188,8 +275,8 @@ class NetworkHandler:
             message_string=self.username
         )
     
-    def recieved_message_join_note(self, username: str, remote_address: tuple, sender_identifier: int):
-        # TODO create a new player
+    def recieved_message_join_note(self, username: str, remote_address: tuple, sender_identifier: int, ):
+        # TODO create a new player (username!!)
 
         # send the response bck to the sender
         reciever_identifier = sender_identifier
@@ -206,6 +293,16 @@ class NetworkHandler:
         # TODO create a new player with username: message_string
         pass
 
+    def everyone_is_ready(self) -> bool:
+        """returns True if every player in 'self.identifier_to_player_dict' is ready
+        
+        """
+
+        everyone_ready = True
+        player: MultiPlayer
+        for player in self.identifier_to_player_dict.values():
+                everyone_ready = False if not player.is_ready else everyone_ready
+        return everyone_ready
 
     def send_message_ready_player(self, reciever_identifier: tuple) -> None:
         self.send_message(
@@ -214,14 +311,47 @@ class NetworkHandler:
             message_string=self.username
         )
 
+        if self.everyone_is_ready():
+            self.send_to_all(
+                send_message_function=self.send_message_start,
+                args=(datetime.now().timestamp()),
+                include_reciever_address=True
+            )
+
+
     def recieved_message_ready_player(self, sender_identifier: int):
-        self.identifier_to_player_dict[sender_identifier]
+        self.identifier_to_player_dict[sender_identifier].is_ready = True
+        
+        if self.everyone_is_ready():
+            self.send_to_all(
+                send_message_function=self.send_message_start,
+                args=(datetime.now().timestamp()),
+                include_reciever_address=True
+            )
 
-    def send_message_unready_player(self) -> None:
-        pass
+    def send_message_unready_player(self, reciever_identifier: int) -> None:
+        self.send_message(
+            reciever_identifier=reciever_identifier,
+            message_type='u', 
+            message_string=""
+        )
+        
 
-    def recieved_message_unready_player(self):
-        pass
+    def recieved_message_unready_player(self, sender_identifier: int):
+        # TODO there could be a sending a unready after the client has already started
+        # maybe check if 90% of players are already ready and then lock the unready button
+        self.identifier_to_player_dict[sender_identifier].is_ready = False
+
+    def send_message_start(self, reciever_identifier, timestamp):
+        self.send_message(
+            reciever_identifier=reciever_identifier,
+            message_type='s',
+            message_string=str(timestamp),
+        )
+
+    def recieve_message_start(self, sender_identifier: int, message_string:str) -> None:
+        self.identifier_to_player_dict[sender_identifier].starttime = float(message_string)
+        self.game_has_started # maybe do this somewhere diffrent
 
 
     def send_message_char_add(self) -> None:
@@ -244,6 +374,7 @@ class NetworkHandler:
         pass
 
     def send_message_leave(self) -> None:
+        # TODO empty out the playerlist
         pass
 
     def recieved_message_leave(self):

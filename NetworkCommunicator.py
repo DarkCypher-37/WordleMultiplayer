@@ -66,6 +66,7 @@ class NetworkCommunicator(threading.Thread):
         self.out_buffer = {}            # stores {remote_address: message, ...}
 
         self.host = socket.gethostbyname(socket.gethostname())
+        self.host = ""
         print(f"{self.host=}")
         if localhost:
             self.host = "127.0.0.1"
@@ -104,6 +105,7 @@ class NetworkCommunicator(threading.Thread):
                 self.main_socket.setblocking(False)
 
             for remote_address in self.out_buffer.keys():
+                # FIXME: RuntimeError: dictionary changed size during iteration
                 errno = send_socket.connect_ex(remote_address)
                 if errno == 0:
                     # print(f"succesfully connect_ex()ed (with {errno=!r})")
