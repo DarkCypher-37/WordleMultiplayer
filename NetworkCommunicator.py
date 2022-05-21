@@ -67,7 +67,6 @@ class NetworkCommunicator(threading.Thread):
 
         self.host = socket.gethostbyname(socket.gethostname())
         self.host = ""
-        print(f"{self.host=}")
         if localhost:
             self.host = "127.0.0.1"
 
@@ -75,6 +74,7 @@ class NetworkCommunicator(threading.Thread):
         self.main_socket.setblocking(False)
 
         self.main_socket.bind((self.host, self.port))
+        print(f"local_address: {(self.host, self.port)=}")
 
         self.main_socket.listen()
 
@@ -89,6 +89,8 @@ class NetworkCommunicator(threading.Thread):
         """'mainloop' of the thread, constantly polling for new entries to the message_out_queue and blocking using select for incoming messages 
         
         """
+
+        print(f"sender is running!! on: {self.main_socket.getsockname()}")
         
         while self.inputs:
 
@@ -105,7 +107,7 @@ class NetworkCommunicator(threading.Thread):
                 self.main_socket.setblocking(False)
 
             for remote_address in self.out_buffer.keys():
-                # FIXME: RuntimeError: dictionary changed size during iteration
+                # FIXME: RuntimeError: dictionary changed size during iteration !!
                 errno = send_socket.connect_ex(remote_address)
                 if errno == 0:
                     # print(f"succesfully connect_ex()ed (with {errno=!r})")
@@ -144,6 +146,7 @@ class NetworkCommunicator(threading.Thread):
                     # recv data and append to message_out_queue
                     try:
                         message_data = self.recv_all(sock)
+                        print(f"hey I just put something into the in_queue")
                         self.message_in_queue.put(message_data)
 
                     except (ConnectionClosedError, MagicNumberMisMatchError, MessageTooBigError):
@@ -160,6 +163,7 @@ class NetworkCommunicator(threading.Thread):
                     byte_messages = self.out_buffer[remote_address]
 
                     # send all the messages in the messages list
+                    print(f" WOW i actually sent something !! from{sock.getsockname()} | to: {sock.getpeername()}")
                     while len(byte_messages):
                         sock.sendall(byte_messages.pop(0))
 
@@ -200,7 +204,7 @@ class NetworkCommunicator(threading.Thread):
         message_type = 'e'
         message_string = reason
 
-        message = remote_address, gamekey, sender_identifier, message_type, message_string
+        message = remote_address, gamekey, sender_identifier, ord(message_type), bytes(message_string, 'utf-8')
 
         self.message_in_queue.put(message)
 
@@ -257,6 +261,8 @@ class NetworkCommunicator(threading.Thread):
 
     def pack_message(self, remote_address: tuple, gamekey: int, sender_identifier: int, message_type: str, message_string: str) -> tuple:
         """packs the message to a bytes() object
+
+        # TODO remove remote_address from args and returns
 
         Args:
             remote_address     (tuple)  : a tuple of (Ip address, port)

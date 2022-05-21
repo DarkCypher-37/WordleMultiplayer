@@ -6,7 +6,8 @@ import random
 from Player import Player, MultiPlayer
 from NetworkCommunicator import NetworkCommunicator
 
-# TODO the program flow of a join request 
+# TODO join needs to send the right port to connect to
+# TODO join_note needs to send the right port to connect to
 
 class CouldNotCreateNetwork(Exception):
     pass
@@ -15,19 +16,20 @@ class CouldNotJoinError(Exception):
     pass
 
 class NetworkHandler:
-    def __init__(self, playerlist: list, username: str, localhost: bool = False) -> None:
+    def __init__(self, playerlist: list, username: str, debug_port, localhost: bool = False) -> None:
 
         if len(playerlist) != 1:
             raise ValueError("playerlist can only contain the client player upon creation of the Network Handler")
 
-        self.message_in_queue = queue.LifoQueue
-        self.message_out_queue = queue.LifoQueue
+        self.message_in_queue = queue.LifoQueue()
+        self.message_out_queue = queue.LifoQueue()
         self.username = username
 
         self.network_communicator = NetworkCommunicator(
-            self.message_in_queue, 
-            self.message_out_queue,
-            localhost=localhost
+            message_in_queue=self.message_in_queue, 
+            message_out_queue=self.message_out_queue,
+            localhost=localhost,
+            port=debug_port
         )
 
         self.port = self.network_communicator.get_port # display the port to the mainloop / game
@@ -93,6 +95,7 @@ class NetworkHandler:
 
         message types:
             j (join request)      :  request to join the game
+                - PORT !! # TODO
                 - username
                 - (gamekey)
                 - (identifier = 0 (not set))
@@ -108,6 +111,7 @@ class NetworkHandler:
                 - reason
 
             m (join note)         :  note to all players after
+                - PORT !! # TODO
                 - username
 
             n (join note response):  
@@ -124,6 +128,9 @@ class NetworkHandler:
             l (leave)             :  transmits a notice of leaving the network
         all types: ['j', 'k', 'l', 'm', 'n', 'r', 's', 'u', 'c', 'd', 'w', 'l', 'e']
         """
+
+        print("send executed")
+
         if remote_address is None:
             if reciever_identifier is None:
                 raise ValueError(f"only one of {remote_address, reciever_identifier} can be None, NOT BOTH")
@@ -137,7 +144,9 @@ class NetworkHandler:
 
         message_data = self.gamekey, sender_identifier, message_type, message_string
 
-        self.message_out_queue.put(remote_address, *message_data)
+        print(f"qsending: {remote_address, message_data=}")
+
+        self.message_out_queue.put((remote_address, *message_data)) # FIXME: might not add a tuple but uses one as self ?? already fixed it??
 
     def check_for_recieved_messages(self):
         """checks for new messages and handles them
@@ -146,18 +155,49 @@ class NetworkHandler:
         
         """
 
-        while self.message_in_queue.not_empty():
+        while not self.message_in_queue.empty():
+            print("something is lurking in the in_queue")
             self.handle_recieved_message(self.message_in_queue.get())
 
     def handle_recieved_message(self, extended_message_data: tuple):
 
-        remote_address, gamekey, sender_identifier, message_type, byte_message = extended_message_data
+        remote_address, gamekey, sender_identifier, message_type_int, byte_message = extended_message_data
+
+        message_type = chr(message_type_int)
+
+        message_string = byte_message.decode()
+
+        print(f"from: {remote_address} | type: {message_type} | says: {message_string}") # DEBUG
 
         # TODO prob. a big if statement
-        # sort out messages first whether self-player is part of a network / currently joining a network 
+        # sort out messages first whether self-player is part of a network / currently joining a network
+        if message_type == 'j':
+            self.recieved_message_join_request(remote_address)
+        if message_type == 'k':
+            self.recieved_message_join_response_accept(message_string)
+        if message_type == 'm':
+            self.recieved_message_join_response_deny(message_string)
+        if message_type == 'n':
+            self.recieved_message_join_note(
+                message_string=message_string, 
+                remote_address=remote_address, 
+                sender_identifier=sender_identifier
+            )
+        if message_type == 'o':
+            self.recieved_message_join_note_response(
+                message_string=message_string, 
+                sender_identifier=sender_identifier
+            )
+        # if message_type == 'j':
+        #     pass
 
 
     def join_network(self, gamekey: int, remote_address: tuple):
+
+        print("executed join_network, starting the NC") # DEBUG
+
+        # starting the communicator
+        self.network_communicator.start()
 
         if self.has_joined_a_network:
             raise CouldNotJoinError("Could not join, already joining a network")
@@ -166,9 +206,14 @@ class NetworkHandler:
         else:
             self.gamekey = gamekey
             self.send_message_join_request(remote_address)
-        
 
-    def create_network(self):
+
+    def create_network(self, debug_gamekey):
+
+        print("executed create_network, starting the NC") # DEBUG
+
+        # starting the communicator
+        self.network_communicator.start()
 
         if self.has_joined_a_network:
             raise CouldNotCreateNetwork("Could not create Network, already joining a network")
@@ -185,9 +230,12 @@ class NetworkHandler:
 
             self.identifier_to_raddr_dict[self.client_identifier] = client_player.remote_address
             self.identifier_to_player_dict[self.client_identifier] = client_player
+            print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
 
         self.gamekey = self.gen_random_bytes(8, start=1)
+        self.gamekey = debug_gamekey
         self.has_joined_a_network = True
+        print("finished creating the network") # DEBUG
 
     
     def send_to_all(self, send_message_function, *args, include_reciever_identifier: bool = False):
@@ -209,6 +257,13 @@ class NetworkHandler:
 
 
     def send_message_join_request(self, remote_address) -> None:
+        """
+        j (join request)      :  request to join the game
+            - PORT!! # TODO
+            - username
+            - (gamekey)
+            - (identifier = 0 (not set))
+        """
         self.send_message(
             remote_address=remote_address, 
             message_type='j', 
@@ -216,6 +271,13 @@ class NetworkHandler:
         )
 
     def recieved_message_join_request(self, remote_address: tuple):
+        """
+        j (join request)      :  request to join the game
+            - PORT !!! # TODO
+            - username
+            - (gamekey)
+            - (identifier = 0 (not set))
+        """
         # TODO send deny if a game is already running
         if not self.has_joined_a_network:
             # send a denial
@@ -229,14 +291,19 @@ class NetworkHandler:
             self.send_message_join_response_accept(remote_address)
 
     def send_message_join_response_accept(self, remote_address: tuple) -> None:
-
+        """
+        k (join response accept):  send back an accept after a join request
+            - identifier for the new player
+            - list of players (IP + Port)
+        """ 
         # generate a new identifier for the new player (retry if it is already in use)
         new_player_identifier = self.gen_random_bytes(8, start=1)
-        while not new_player_identifier in self.identifier_to_raddr_dict:
+        while new_player_identifier in self.identifier_to_raddr_dict:
             new_player_identifier = self.gen_random_bytes(8, start=1)
+        print("message_join_resp_acc")
 
         # list of remote_addresses_list, not that great since i will use eval() to it back to a list
-        remote_addresses_list = [player.remote_address for player in self.identifier_to_player_dict.value()]
+        remote_addresses_list = [player.remote_address for player in self.identifier_to_player_dict.values()]
 
         self.send_message(
             remote_address=remote_address, 
@@ -245,8 +312,12 @@ class NetworkHandler:
         )
 
     def recieved_message_join_response_accept(self, message_string: str):
-        
-        # using eval() could be dangerous 
+        """
+        k (join response accept):  send back an accept after a join request
+            - identifier for the new player
+            - list of players (IP + Port)
+        """ 
+        # using eval() is just asking for security problems ...
         new_player_identifier = eval(message_string[:20].replace('_', ''))
         remote_addresses_list = eval(message_string[20:])
 
@@ -258,6 +329,10 @@ class NetworkHandler:
             self.send_message_join_note(remote_address)
 
     def send_message_join_response_deny(self, remote_address: tuple, reason: str) -> None:
+        """
+        m (join response deny) :  send back a deny after a join request
+            - reason
+        """ 
         self.send_message(
             remote_address=remote_address, 
             message_type='m', 
@@ -265,17 +340,29 @@ class NetworkHandler:
         )
 
     def recieved_message_join_response_deny(self, message_string):
+        """
+        m (join response deny) :  send back a deny after a join request
+            - reason
+        """ 
         reason = message_string
         raise CouldNotJoinError(reason)
 
     def send_message_join_note(self, remote_address) -> None:
+        """
+        n (join note)         :  note to all players after
+            - username
+        """ 
         self.send_message(
             remote_address=remote_address, 
             message_type='n', 
             message_string=self.username
         )
     
-    def recieved_message_join_note(self, username: str, remote_address: tuple, sender_identifier: int, ):
+    def recieved_message_join_note(self, message_string: str, remote_address: tuple, sender_identifier: int, ):
+        """
+        n (join note)         :  note to all players after
+            - username
+        """ 
         # TODO create a new player (username!!)
 
         # send the response bck to the sender
@@ -283,6 +370,10 @@ class NetworkHandler:
         self.send_message_join_note_response(reciever_identifier)
 
     def send_message_join_note_response(self, reciever_identifier) -> None:
+        """
+        o (join note response):  
+            - username
+        """ 
         self.send_message(
             reciever_identifier=reciever_identifier,
             message_type='o', 
@@ -290,6 +381,10 @@ class NetworkHandler:
         )
     
     def recieved_message_join_note_response(self, message_string, sender_identifier, ):
+        """
+        O (join note response):  
+            - username
+        """ 
         # TODO create a new player with username: message_string
         pass
 

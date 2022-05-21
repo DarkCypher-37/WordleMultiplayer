@@ -1,4 +1,32 @@
 import queue
+import random
+import enum
+
+def d_print(msg):
+    print("d: ", msg)
+
+class CharStatus(enum.Enum):
+    undefined = -1
+    correct_position = 2                # green
+    word_contains = 1                   # yellow
+    word_doesnt_contain = 0             # gray
+
+class WordList: # own class
+
+    def __init__(self) -> None:
+        """creates an WordList object, reads in "WordList.txt", a file containing ~13K 5 letter words"""
+        with open("WordList.txt", 'r') as file:
+            self.words = file.read().split()
+
+    def contains(self, word:str) -> bool:
+        """returns true if the word is contained in the wordlist"""
+        # return True if word in self.words else False
+        return word in self.words
+
+    def get_random_word(self) -> str:
+        """returns a random word from the wordlist"""
+        # There is currently only the ~13K wordlist, however the solution in wordle is chosen from a list with ~2K entries 
+        return random.choice(self.words)
 
 
 class Player:
@@ -126,7 +154,7 @@ class Player:
 
 class MultiPlayer(Player):
     
-    def __init__(self, solution_word, identifier, username:str) -> None:
+    def __init__(self, solution_word, username:str, identifier: int = 0, raddr = None) -> None:
         # TODO:
         # add unicode-timestamp self.starttime
         self.is_ready = False
@@ -135,8 +163,8 @@ class MultiPlayer(Player):
 
         super().__init__(solution_word)
         self.username = username
-        self.identifier = 0              # used to uniquely identify the player
-        self.remote_address = None       # tuple(IP_address, Port) # TODO set the remote address during join process
+        self.identifier = identifier              # used to uniquely identify the player
+        self.remote_address = raddr       # tuple(IP_address, Port) # TODO set the remote address during join process
         self.add_queue = queue.Queue()     # in queue for thread safe handling/storing the recieved newly added chars       # prob. unnessecary
         self.remove_queue = queue.Queue()     # in queue for thread safe handling/storing the recieved newly removed chars  # prob. unnessecary
 
