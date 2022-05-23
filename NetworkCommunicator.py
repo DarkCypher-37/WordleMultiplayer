@@ -4,6 +4,8 @@ import select
 import struct
 import threading
 
+# FIXME: RuntimeError: dictionary changed size during iteration !!
+
 # TODO: test if port already in use
 # TODO: make IP version agnostic
 
