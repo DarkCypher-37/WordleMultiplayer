@@ -27,7 +27,7 @@ class ConnectExError(NetworkError):
         self.errno = errno
 
     def __str__(self) -> str:
-        return f"during a conect_ex() attempt an error occured (errno: {self.errno})"
+        return f"during a connect_ex() attempt an error occured (errno: {self.errno})"
 
 
 class NetworkCommunicator(threading.Thread):

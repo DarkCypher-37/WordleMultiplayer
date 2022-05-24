@@ -52,6 +52,21 @@ class NetworkHandler:
         print(self.identifier_to_player_dict)
         print(self.identifier_to_raddr_dict)
 
+    def add_player(self, username: str, identifier: int, remote_address) -> None:
+        player = MultiPlayer(
+            solution_word="teest",      # DEBUG get the real solution word
+            username=username,
+            identifier=identifier,
+            raddr=remote_address
+        )
+
+        self.identifier_to_raddr_dict[player.identifier] = player.remote_address
+        self.identifier_to_player_dict[player.identifier] = player
+
+        print("-------------- ADDED PLAYER")
+        print(self.identifier_to_player_dict)
+        print(self.identifier_to_raddr_dict)
+
     def gen_random_bytes(self, byte_count: int, start: int = 0) -> int:
         """method to get a specified amount of random bytes
 
@@ -202,6 +217,8 @@ class NetworkHandler:
         # starting the communicator
         self.network_communicator.start()
 
+        self.temporary_join_network_remote_address = remote_address
+
         if self.has_joined_a_network:
             raise CouldNotJoinError("Could not join, already joining a network")
         if self.currently_joining_a_network:
@@ -268,10 +285,10 @@ class NetworkHandler:
             - (identifier = 0 (not set))
         """
 
-        port = str(hex(self.port)[2:]).rjust(10, '_')
+        local_port_string = str(hex(self.port)[2:]).rjust(10, '_')
         username = self.username
 
-        message_string = port + username
+        message_string = local_port_string + username
 
         self.send_message(
             remote_address=remote_address, 
@@ -341,7 +358,19 @@ class NetworkHandler:
         new_player_identifier = eval(message_string[:20].replace('_', ''))
         remote_addresses_list = eval(message_string[20:])
         
-        self.client_identifier = new_player_identifier
+        # self.client_identifier = new_player_identifier
+
+        # switch the client_identifier from a temporary one
+        if self.client_identifier == 0:
+            client_player: MultiPlayer = self.identifier_to_player_dict[0]
+            del self.identifier_to_player_dict[0]
+            del self.identifier_to_raddr_dict[0]
+
+            self.client_identifier = new_player_identifier
+
+            self.identifier_to_raddr_dict[self.client_identifier] = client_player.remote_address
+            self.identifier_to_player_dict[self.client_identifier] = client_player
+            print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
 
         for remote_address in remote_addresses_list:
             self.send_message_join_note(remote_address)
@@ -369,19 +398,35 @@ class NetworkHandler:
         """
         n (join note)         :  note to all players after
             - username
+            # TODO Port
         """ 
+
+        local_port_string = str(hex(self.port)[2:]).rjust(10, '_')
+
         self.send_message(
             remote_address=remote_address, 
             message_type='n', 
-            message_string=self.username
+            message_string=local_port_string + self.username
         )
-    
-    def recieved_message_join_note(self, message_string: str, remote_address: tuple, sender_identifier: int, ):
+
+    def recieved_message_join_note(self, message_string: str, remote_address: tuple, sender_identifier: int):
         """
         n (join note)         :  note to all players after
             - username
+            # TODO Port
         """ 
         # TODO create a new player (username!!)
+
+        remote_port = int("0x" + message_string[:10].replace('_', ''), 16)
+        username = message_string[10:]
+
+        remote_address = remote_address[0], remote_port
+
+        self.add_player(
+            username=username,
+            identifier=sender_identifier,
+            remote_address=remote_address
+        )
 
         # send the response bck to the sender
         reciever_identifier = sender_identifier
@@ -398,13 +443,21 @@ class NetworkHandler:
             message_string=self.username
         )
     
-    def recieved_message_join_note_response(self, message_string, sender_identifier, ):
+    def recieved_message_join_note_response(self, message_string: str, sender_identifier: int):
         """
         O (join note response):  
             - username
         """ 
-        # TODO create a new player with username: message_string
-        pass
+
+        username = message_string
+
+        self.add_player(
+            username=username,
+            identifier=sender_identifier,
+            remote_address=self.temporary_join_network_remote_address
+        )
+
+        del self.temporary_join_network_remote_address
 
     def everyone_is_ready(self) -> bool:
         """returns True if every player in 'self.identifier_to_player_dict' is ready
