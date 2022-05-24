@@ -21,6 +21,8 @@ if __name__ == "__main__":
         debug_port=44444
     )
 
+    raddr = ("127.0.0.1", 55555)
+
     nh.create_network(10)
     while True:
         nh.check_for_recieved_messages()

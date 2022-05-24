@@ -21,6 +21,10 @@ if __name__ == "__main__":
         debug_port=55555
     )
 
-    nh.join_network(10, ("127.0.0.1", 44444))
+    # laddr ('192.168.178.23', )
+
+    raddr = ("127.0.0.1", 44444)
+
+    nh.join_network(10, raddr)
     while True:
         nh.check_for_recieved_messages()

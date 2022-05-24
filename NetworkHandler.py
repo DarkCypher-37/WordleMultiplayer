@@ -33,6 +33,7 @@ class NetworkHandler:
         )
 
         self.port = self.network_communicator.get_port # display the port to the mainloop / game
+        self.host = self.network_communicator.get_host # display the host to the mainloop / game
 
         self.gamekey = None
         self.max_network_size = 5
@@ -47,6 +48,9 @@ class NetworkHandler:
         for player in playerlist:
             self.identifier_to_raddr_dict[player.identifier] = player.remote_address
             self.identifier_to_player_dict[player.identifier] = player
+
+        print(self.identifier_to_player_dict)
+        print(self.identifier_to_raddr_dict)
 
     def gen_random_bytes(self, byte_count: int, start: int = 0) -> int:
         """method to get a specified amount of random bytes
@@ -95,7 +99,7 @@ class NetworkHandler:
 
         message types:
             j (join request)      :  request to join the game
-                - PORT !! # TODO
+                - PORT
                 - username
                 - (gamekey)
                 - (identifier = 0 (not set))
@@ -164,7 +168,6 @@ class NetworkHandler:
         remote_address, gamekey, sender_identifier, message_type_int, byte_message = extended_message_data
 
         message_type = chr(message_type_int)
-
         message_string = byte_message.decode()
 
         print(f"from: {remote_address} | type: {message_type} | says: {message_string}") # DEBUG
@@ -172,7 +175,7 @@ class NetworkHandler:
         # TODO prob. a big if statement
         # sort out messages first whether self-player is part of a network / currently joining a network
         if message_type == 'j':
-            self.recieved_message_join_request(remote_address)
+            self.recieved_message_join_request(remote_address, message_string=message_string)
         if message_type == 'k':
             self.recieved_message_join_response_accept(message_string)
         if message_type == 'm':
@@ -264,13 +267,19 @@ class NetworkHandler:
             - (gamekey)
             - (identifier = 0 (not set))
         """
+
+        port = str(hex(self.port)[2:]).rjust(10, '_')
+        username = self.username
+
+        message_string = port + username
+
         self.send_message(
             remote_address=remote_address, 
             message_type='j', 
-            message_string=self.username
+            message_string=message_string
         )
 
-    def recieved_message_join_request(self, remote_address: tuple):
+    def recieved_message_join_request(self, remote_address: tuple, message_string: str):
         """
         j (join request)      :  request to join the game
             - PORT !!! # TODO
@@ -278,6 +287,13 @@ class NetworkHandler:
             - (gamekey)
             - (identifier = 0 (not set))
         """
+
+        remote_port = int("0x" + message_string[:10].replace('_', ''), 16)
+        username = message_string[10:]
+
+        # replace the port on which the prev messge was sent with the port that the remote is listening on
+        remote_address = remote_address[0], remote_port
+
         # TODO send deny if a game is already running
         if not self.has_joined_a_network:
             # send a denial
@@ -302,9 +318,12 @@ class NetworkHandler:
             new_player_identifier = self.gen_random_bytes(8, start=1)
         print("message_join_resp_acc")
 
-        # list of remote_addresses_list, not that great since i will use eval() to it back to a list
+        # get the remote_addresses (raddr) of all the players (including self/client)
         remote_addresses_list = [player.remote_address for player in self.identifier_to_player_dict.values()]
+        remote_addresses_list.remove(None)
+        remote_addresses_list.append((self.host, self.port))
 
+        # sending the list directly, not that great since i will use eval() to it back to a list
         self.send_message(
             remote_address=remote_address, 
             message_type='k', 
@@ -318,10 +337,9 @@ class NetworkHandler:
             - list of players (IP + Port)
         """ 
         # using eval() is just asking for security problems ...
+        # TODO replace eval with something diffrent (such as padding + using a seperator char)
         new_player_identifier = eval(message_string[:20].replace('_', ''))
         remote_addresses_list = eval(message_string[20:])
-
-        print(f"{new_player_identifier, remote_addresses_list, type(new_player_identifier), type(remote_addresses_list)=}")
         
         self.client_identifier = new_player_identifier
 

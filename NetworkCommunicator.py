@@ -4,8 +4,6 @@ import select
 import struct
 import threading
 
-# FIXME: RuntimeError: dictionary changed size during iteration !!
-
 # TODO: test if port already in use
 # TODO: make IP version agnostic
 
@@ -68,7 +66,7 @@ class NetworkCommunicator(threading.Thread):
         self.out_buffer = {}            # stores {remote_address: message, ...}
 
         self.host = socket.gethostbyname(socket.gethostname())
-        self.host = ""
+        # self.host = ""
         if localhost:
             self.host = "127.0.0.1"
 
@@ -76,6 +74,7 @@ class NetworkCommunicator(threading.Thread):
         self.main_socket.setblocking(False)
 
         self.main_socket.bind((self.host, self.port))
+        print(f"{socket.gethostbyname(socket.gethostname())=}")
         print(f"local_address: {(self.host, self.port)=}")
 
         self.main_socket.listen()
@@ -86,6 +85,11 @@ class NetworkCommunicator(threading.Thread):
     def get_port(self):
         """a getter for the port"""
         return self.port
+
+    @property
+    def get_host(self):
+        """a getter for the port"""
+        return self.host
 
     def run(self) -> None:
         """'mainloop' of the thread, constantly polling for new entries to the message_out_queue and blocking using select for incoming messages 
@@ -108,8 +112,7 @@ class NetworkCommunicator(threading.Thread):
                 send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.main_socket.setblocking(False)
 
-            for remote_address in self.out_buffer.keys():
-                # FIXME: RuntimeError: dictionary changed size during iteration !!
+            for remote_address in list(self.out_buffer.keys()):
                 errno = send_socket.connect_ex(remote_address)
                 if errno == 0:
                     # print(f"succesfully connect_ex()ed (with {errno=!r})")
@@ -137,6 +140,7 @@ class NetworkCommunicator(threading.Thread):
 
             # handle all readable sockets
             sock: socket.socket
+
             for sock in readable_sockets:
                 if sock == self.main_socket:
                     # accepting a new connection
