@@ -4,6 +4,8 @@ import select
 import struct
 import threading
 
+from Errors import *
+
 # TODO: test if port already in use
 # TODO: make IP version agnostic
 
@@ -12,28 +14,6 @@ colorama.init()                    # DEBUG
 green = colorama.Fore.GREEN        # DEBUG
 red = colorama.Fore.RED            # DEBUG
 reset = colorama.Style.RESET_ALL   # DEBUG
-
-class NetworkError(Exception):
-    pass
-
-class ConnectionClosedError(NetworkError):
-    def __str__(self) -> str:
-        return "Remote has closed the connection"
-
-class MagicNumberMisMatchError(NetworkError):
-    def __str__(self) -> str:
-        return "magic number doesnt match"
-
-class MessageTooBigError(NetworkError):
-    def __str__(self) -> str:
-        return "message_string part of a message was larger than 2**12 = 4096 bytes"
-
-class ConnectExError(NetworkError):
-    def __init__(self, errno) -> None:
-        self.errno = errno
-
-    def __str__(self) -> str:
-        return f"during a connect_ex() attempt an error occured (errno: {self.errno})"
 
 
 class NetworkCommunicator(threading.Thread):
@@ -80,20 +60,24 @@ class NetworkCommunicator(threading.Thread):
         self.main_socket.setblocking(False)
 
         self.main_socket.bind((self.host, self.port))
-        # print(f"{socket.gethostbyname(socket.gethostname())=}")
-        print(f"local_address: {(self.host, self.port)=}")
+
+        # set the port variable to the port assigned py the operating system
+        self.port = self.main_socket.getsockname()[1]
+
+        print(f"local_address: {(self.host, self.port)=}") # DEBUG
 
         self.main_socket.listen()
 
         self.inputs, self.outputs, self.exc = [self.main_socket], [], []
 
     @property
-    def get_port(self):
+    def get_port(self) -> int:
         """a getter for the port"""
+        # not properly done since this is still just a wrapper around self.port
         return self.port
 
     @property
-    def get_host(self):
+    def get_host(self) -> str:
         """a getter for the port"""
         return self.host
 
@@ -146,7 +130,7 @@ class NetworkCommunicator(threading.Thread):
 
             # print([s for s in self.inputs])
 
-            print(f"len(inputs): {red}{len(self.inputs)}{reset} len(readable_sockets): {red}{len(readable_sockets)}{reset} writable_sockets: {red}{len(writable_sockets)}{reset}")
+            # print(f"len(inputs): {red}{len(self.inputs)}{reset} len(readable_sockets): {red}{len(readable_sockets)}{reset} writable_sockets: {red}{len(writable_sockets)}{reset}")
 
             # handle all readable sockets
             sock: socket.socket
@@ -165,8 +149,8 @@ class NetworkCommunicator(threading.Thread):
                         # print(f"hey I just put something into the in_queue")
                         self.message_in_queue.put(message_data)
 
-                        print(sock)    # DEBUG??? 
-                        sock.close()    # DEBUG??? 
+                        # print(sock)    # DEBUG??? 
+                        # sock.close()    # DEBUG??? 
 
                     except (ConnectionClosedError, MagicNumberMisMatchError, MessageTooBigError):
                         self.inputs.remove(sock)
@@ -263,6 +247,8 @@ class NetworkCommunicator(threading.Thread):
         # convert byte_header from bytes to usable format
         magic_number, size, gamekey, sender_identifier, message_type = struct.unpack(format, byte_header)
 
+        print(f"{green}recieved a message: {chr(message_type)}{reset}")
+
         if magic_number != self.magic_number:
             raise MagicNumberMisMatchError(f"magic number doesnt match: {magic_number} != {self.magic_number}")
 
@@ -330,3 +316,5 @@ class NetworkCommunicator(threading.Thread):
 
         while len(self.inputs):
             self.inputs.pop(-1).close()
+
+        print(f"the NetworkCommunicator is shutting down, {len(self.inputs)} sockets still waiting!") # DEBUG

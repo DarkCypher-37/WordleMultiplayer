@@ -22,8 +22,7 @@ if __name__ == "__main__":
     nh = NetworkHandler(
         playerlist=playerlist,
         username=p1.username,
-        localhost=True,
-        debug_port=port
+        localhost=True
     )
 
     raddr = ("127.0.0.1", dest_port)

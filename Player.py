@@ -1,32 +1,10 @@
 import queue
-import random
-import enum
+
+from WordList import WordList, CharStatus
+from Errors import *
 
 def d_print(msg):
     print("d: ", msg)
-
-class CharStatus(enum.Enum):
-    undefined = -1
-    correct_position = 2                # green
-    word_contains = 1                   # yellow
-    word_doesnt_contain = 0             # gray
-
-class WordList: # own class
-
-    def __init__(self) -> None:
-        """creates an WordList object, reads in "WordList.txt", a file containing ~13K 5 letter words"""
-        with open("WordList.txt", 'r') as file:
-            self.words = file.read().split()
-
-    def contains(self, word:str) -> bool:
-        """returns true if the word is contained in the wordlist"""
-        # return True if word in self.words else False
-        return word in self.words
-
-    def get_random_word(self) -> str:
-        """returns a random word from the wordlist"""
-        # There is currently only the ~13K wordlist, however the solution in wordle is chosen from a list with ~2K entries 
-        return random.choice(self.words)
 
 
 class Player:
@@ -35,46 +13,62 @@ class Player:
         self.wordlist = WordList()
         self.solution_word = solution_word
         self.valid_chars = "abcdefghijklmnopqrstuvwxyz"
-        self.word_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words
-        self.match_table = [[None for _ in range(5)] for _ in range(6)] # 5 by 6 table of the words's status
+        self.max_word_guesses = 6
+        self.chars_in_a_word = 5
+        self.won = False
+        self.word_table = [[None for _ in range(self.chars_in_a_word)] for _ in range(self.max_word_guesses)] # 5 by 6 table of the words
+        self.match_table = [[None for _ in range(self.chars_in_a_word)] for _ in range(self.max_word_guesses)] # 5 by 6 table of the words's status
         self.current_word_index = 0
         self.current_char_index = 0
 
     def add_word(self, word: str):
         """add a word to the word_table of a player"""
-        if self.current_word_index > 5:
-            raise Exception("word list too full!")
+
+        if self.current_char_index != 0:
+            raise KeyError(f"can't use add_word when there is already a character in the current word: {self.word_table[self.current_word_index]}")
+
+        if self.current_word_index >= self.max_word_guesses:
+            # at this point the game is 'over', the player has lost
+            raise KeyError("word list too full!")
 
         # add word to word_table
         self.word_table[self.current_word_index] = list(word)
+        match = self.update_current_match()
+        if not match:
+            # word not in wordlist
+            d_print(f"{word!r} is not a word in the list")  # DEBUG
+            self.empty_current_word()
+            return False
         self.current_word_index += 1
-        self.update_match_list()
+        return match
 
     def add_char(self, char: str):
-        """add a character to the current position on the word_table"""
+        """
+        add a character to the current position on the word_table
+        checks if a 'row' is completed
+        ! checking whether all guesses are used up must be done where this function is called 
+        """
+
+        print("SINGLEPLAYER even better !!!")
 
         char = char.casefold()
 
-        if self.current_word_index > 5:
-            raise Exception("word list too full!")
-        if self.current_char_index > 4:
-            raise Exception("char list too full!")
+        if self.current_word_index >= self.max_word_guesses:
+            raise KeyError("word list too full!")
+        if self.current_char_index >= self.chars_in_a_word:
+            raise KeyError("char list too full!")
         if len(char) > 1:
-            # may not be nessecary
-            raise ValueError(f"too long to be a char: {char!r}")
+            raise CharTooLongError(f"too long to be a char: {char!r}")
         if char not in self.valid_chars:
             # check for letter through a .. z
-            # maybe should raise ValueError ?
-            d_print(f"{char} not in the alphabet!")       # DEBUG
-            return False
+            raise ValueError(f"char not part of the english alphabet: {char}")
 
         # add the char to the word_table
         self.word_table[self.current_word_index][self.current_char_index] = char
         self.current_char_index += 1
         self.print_table() # DEBUG
 
-        if self.current_char_index >= 5:
-            d_print("reached max char_index")         # DEBUG
+        if self.current_char_index == self.chars_in_a_word:
             # when the end of a word is reached, check for a word match
             match = self.update_current_match()
             if not match:
@@ -86,6 +80,18 @@ class Player:
             self.current_word_index += 1
             return match
 
+    def remove_char(self, char):
+        """remove the last character to be put in the word_table"""
+
+        if self.current_char_index == 0:
+            raise KeyError("decrementing the current_char_index would cause an out of bound error, cannot remove char")
+        
+        self.current_char_index -= 1 
+        
+        if self.word_table[self.current_word_index][self.current_char_index] != char:
+            raise ValueError("the transmitted char to be removed was not identical with the one saved by the client, cannot remove char")
+        
+        self.word_table[self.current_word_index][self.current_char_index] = None
 
     def empty_current_word(self):
         """reset the current word from the word_table"""
@@ -114,19 +120,24 @@ class Player:
 
     def print_table(self):
         """prints out the word_table, for debug purposes"""
-        print('\n'.join(''.join(list(map(str, word))) for word in self.word_table).replace("None", '_'))
+        print('\n'.join('|'.join(list(map(str, word))) for word in self.word_table).replace("None", '_'))
+
+    def __str__(self):
+        """returns the table as a string"""
+        return '\n'.join('|'.join(list(map(str, word))) for word in self.word_table).replace("None", '_')
 
     def match(self, guess:str):
         """ 
         returns an array of CharStatus corresponding to the correctness of the letters in guess
         returns False if guess is not a word in the wordlist or (by extension of the previous) not 5 chars in length
         """
-        result = [CharStatus.word_doesnt_contain for _ in range(5)]
-        solution_copy = self.solution_word
 
         if not self.wordlist.contains(guess):
             d_print(f"{guess} is not a word in wordlist!!")                               # DEBUG
             return False
+
+        result = [CharStatus.word_doesnt_contain for _ in range(5)]
+        solution_copy = self.solution_word
 
         # first filter out all letters with correct position
         for index, char in enumerate(guess):
@@ -155,22 +166,19 @@ class Player:
 class MultiPlayer(Player):
     
     def __init__(self, solution_word, username:str, identifier: int = 0, raddr = None) -> None:
-        # TODO:
-        # add unicode-timestamp self.starttime
+        super().__init__(solution_word)
+        
         self.is_ready = False
         self.starttime = None
+        self.endtime = None
 
-
-        super().__init__(solution_word)
         self.username = username
         self.identifier = identifier              # used to uniquely identify the player
-        self.remote_address = raddr       # tuple(IP_address, Port) # TODO set the remote address during join process
-        self.add_queue = queue.Queue()     # in queue for thread safe handling/storing the recieved newly added chars       # prob. unnessecary
-        self.remove_queue = queue.Queue()     # in queue for thread safe handling/storing the recieved newly removed chars  # prob. unnessecary
+        self.remote_address: tuple[str, int] = raddr       # tuple(IP_address, Port) # TODO set the remote address during join process
+    
 
     def add_char(self, char: str):
-        # return super().add_char(char)
-        pass
+        return super().add_char(char)
 
 
 class BotPlayer(Player):
