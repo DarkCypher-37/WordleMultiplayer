@@ -9,6 +9,12 @@ from NetworkCommunicator import NetworkCommunicator
 # TODO join needs to send the right port to connect to
 # TODO join_note needs to send the right port to connect to
 
+import colorama                    # DEBUG
+colorama.init()                    # DEBUG
+green = colorama.Fore.GREEN        # DEBUG
+red = colorama.Fore.RED            # DEBUG
+reset = colorama.Style.RESET_ALL   # DEBUG
+
 class CouldNotCreateNetwork(Exception):
     pass
 
@@ -49,9 +55,6 @@ class NetworkHandler:
             self.identifier_to_raddr_dict[player.identifier] = player.remote_address
             self.identifier_to_player_dict[player.identifier] = player
 
-        print(self.identifier_to_player_dict)
-        print(self.identifier_to_raddr_dict)
-
     def add_player(self, username: str, identifier: int, remote_address) -> None:
         player = MultiPlayer(
             solution_word="teest",      # DEBUG get the real solution word
@@ -63,9 +66,7 @@ class NetworkHandler:
         self.identifier_to_raddr_dict[player.identifier] = player.remote_address
         self.identifier_to_player_dict[player.identifier] = player
 
-        print("-------------- ADDED PLAYER")
-        print(self.identifier_to_player_dict)
-        print(self.identifier_to_raddr_dict)
+        print(f"{green} USER ADDED: {player.username=}{reset}")
 
     def gen_random_bytes(self, byte_count: int, start: int = 0) -> int:
         """method to get a specified amount of random bytes
@@ -148,7 +149,7 @@ class NetworkHandler:
         all types: ['j', 'k', 'l', 'm', 'n', 'r', 's', 'u', 'c', 'd', 'w', 'l', 'e']
         """
 
-        print("send executed")
+        # print("send executed") # DEBUG
 
         if remote_address is None:
             if reciever_identifier is None:
@@ -163,7 +164,8 @@ class NetworkHandler:
 
         message_data = self.gamekey, sender_identifier, message_type, message_string
 
-        print(f"qsending: {remote_address, message_data=}")
+        # print(f"qsending: {remote_address, message_data=}")  # DEBUG
+        print(f"putting a message in the queue: {message_type=}, {remote_address=}") # DEBUG
 
         self.message_out_queue.put((remote_address, *message_data)) # FIXME: might not add a tuple but uses one as self ?? already fixed it??
 
@@ -175,7 +177,7 @@ class NetworkHandler:
         """
 
         while not self.message_in_queue.empty():
-            print("something is lurking in the in_queue")
+            # print("something is lurking in the in_queue") # DEBUG
             self.handle_recieved_message(self.message_in_queue.get())
 
     def handle_recieved_message(self, extended_message_data: tuple):
@@ -185,7 +187,8 @@ class NetworkHandler:
         message_type = chr(message_type_int)
         message_string = byte_message.decode()
 
-        print(f"from: {remote_address} | type: {message_type} | says: {message_string}") # DEBUG
+        # print(f"from: {remote_address} | type: {message_type} | says: {message_string}") # DEBUG
+        print(f"recieved a message: {message_type=}, {sender_identifier=}") # DEBUG
 
         # TODO prob. a big if statement
         # sort out messages first whether self-player is part of a network / currently joining a network
@@ -212,7 +215,7 @@ class NetworkHandler:
 
     def join_network(self, gamekey: int, remote_address: tuple):
 
-        print("executed join_network, starting the NC") # DEBUG
+        # print("executed join_network, starting the NC") # DEBUG
 
         # starting the communicator
         self.network_communicator.start()
@@ -230,7 +233,7 @@ class NetworkHandler:
 
     def create_network(self, debug_gamekey):
 
-        print("executed create_network, starting the NC") # DEBUG
+        # print("executed create_network, starting the NC") # DEBUG
 
         # starting the communicator
         self.network_communicator.start()
@@ -250,7 +253,7 @@ class NetworkHandler:
 
             self.identifier_to_raddr_dict[self.client_identifier] = client_player.remote_address
             self.identifier_to_player_dict[self.client_identifier] = client_player
-            print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
+            # print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
 
         self.gamekey = self.gen_random_bytes(8, start=1)
         self.gamekey = debug_gamekey
@@ -333,7 +336,7 @@ class NetworkHandler:
         new_player_identifier = self.gen_random_bytes(8, start=1)
         while new_player_identifier in self.identifier_to_raddr_dict:
             new_player_identifier = self.gen_random_bytes(8, start=1)
-        print("message_join_resp_acc")
+        # print("message_join_resp_acc") # DEBUG
 
         # get the remote_addresses (raddr) of all the players (including self/client)
         remote_addresses_list = [player.remote_address for player in self.identifier_to_player_dict.values()]
@@ -370,7 +373,7 @@ class NetworkHandler:
 
             self.identifier_to_raddr_dict[self.client_identifier] = client_player.remote_address
             self.identifier_to_player_dict[self.client_identifier] = client_player
-            print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
+            # print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
 
         for remote_address in remote_addresses_list:
             self.send_message_join_note(remote_address)

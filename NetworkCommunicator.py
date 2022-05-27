@@ -7,6 +7,12 @@ import threading
 # TODO: test if port already in use
 # TODO: make IP version agnostic
 
+import colorama                    # DEBUG
+colorama.init()                    # DEBUG
+green = colorama.Fore.GREEN        # DEBUG
+red = colorama.Fore.RED            # DEBUG
+reset = colorama.Style.RESET_ALL   # DEBUG
+
 class NetworkError(Exception):
     pass
 
@@ -74,7 +80,7 @@ class NetworkCommunicator(threading.Thread):
         self.main_socket.setblocking(False)
 
         self.main_socket.bind((self.host, self.port))
-        print(f"{socket.gethostbyname(socket.gethostname())=}")
+        # print(f"{socket.gethostbyname(socket.gethostname())=}")
         print(f"local_address: {(self.host, self.port)=}")
 
         self.main_socket.listen()
@@ -138,6 +144,10 @@ class NetworkCommunicator(threading.Thread):
             # block until either a socket is ready or until the timeout, to register new entries in the 'self.message_out_queue'
             readable_sockets, writable_sockets, exceptional_sockets = select.select(self.inputs, self.outputs, self.exc, self.timeout_interval)
 
+            # print([s for s in self.inputs])
+
+            print(f"len(inputs): {red}{len(self.inputs)}{reset} len(readable_sockets): {red}{len(readable_sockets)}{reset} writable_sockets: {red}{len(writable_sockets)}{reset}")
+
             # handle all readable sockets
             sock: socket.socket
 
@@ -152,8 +162,11 @@ class NetworkCommunicator(threading.Thread):
                     # recv data and append to message_out_queue
                     try:
                         message_data = self.recv_all(sock)
-                        print(f"hey I just put something into the in_queue")
+                        # print(f"hey I just put something into the in_queue")
                         self.message_in_queue.put(message_data)
+
+                        print(sock)    # DEBUG??? 
+                        sock.close()    # DEBUG??? 
 
                     except (ConnectionClosedError, MagicNumberMisMatchError, MessageTooBigError):
                         self.inputs.remove(sock)
@@ -169,7 +182,7 @@ class NetworkCommunicator(threading.Thread):
                     byte_messages = self.out_buffer[remote_address]
 
                     # send all the messages in the messages list
-                    print(f" WOW i actually sent something !! from{sock.getsockname()} | to: {sock.getpeername()}")
+                    print(f"NC sent from{sock.getsockname()} | to: {sock.getpeername()}")
                     while len(byte_messages):
                         sock.sendall(byte_messages.pop(0))
 
