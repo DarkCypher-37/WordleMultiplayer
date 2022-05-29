@@ -1,10 +1,7 @@
-import queue
-
 from WordList import WordList, CharStatus
 from Errors import *
 
-def d_print(msg):
-    print("d: ", msg)
+from color import *
 
 
 class Player:
@@ -17,7 +14,7 @@ class Player:
         self.chars_in_a_word = 5
         self.won = False
         self.word_table = [[None for _ in range(self.chars_in_a_word)] for _ in range(self.max_word_guesses)] # 5 by 6 table of the words
-        self.match_table = [[None for _ in range(self.chars_in_a_word)] for _ in range(self.max_word_guesses)] # 5 by 6 table of the words's status
+        self.match_table = [[CharStatus.undefined for _ in range(self.chars_in_a_word)] for _ in range(self.max_word_guesses)] # 5 by 6 table of the words's status
         self.current_word_index = 0
         self.current_char_index = 0
 
@@ -36,7 +33,7 @@ class Player:
         match = self.update_current_match()
         if not match:
             # word not in wordlist
-            d_print(f"{word!r} is not a word in the list")  # DEBUG
+            cprint(B, f"{word!r} is not a word in the list")  # DEBUG
             self.empty_current_word()
             return False
         self.current_word_index += 1
@@ -48,8 +45,6 @@ class Player:
         checks if a 'row' is completed
         ! checking whether all guesses are used up must be done where this function is called 
         """
-
-        print("SINGLEPLAYER even better !!!")
 
         char = char.casefold()
 
@@ -66,7 +61,6 @@ class Player:
         # add the char to the word_table
         self.word_table[self.current_word_index][self.current_char_index] = char
         self.current_char_index += 1
-        self.print_table() # DEBUG
 
         if self.current_char_index == self.chars_in_a_word:
             # when the end of a word is reached, check for a word match
@@ -80,7 +74,7 @@ class Player:
             self.current_word_index += 1
             return match
 
-    def remove_char(self, char):
+    def remove_char(self, char: str) -> None:
         """remove the last character to be put in the word_table"""
 
         if self.current_char_index == 0:
@@ -113,7 +107,7 @@ class Player:
         word = ''.join(map(str, self.word_table[self.current_word_index]))
         match = self.match(word)
         if not match:
-            d_print(f"{word!r} is not a valid word")  # DEBUG
+            cprint(B, f"{word!r} is not a valid word")  # DEBUG
             return False
         self.match_table[self.current_word_index] = match
         return match
@@ -133,7 +127,7 @@ class Player:
         """
 
         if not self.wordlist.contains(guess):
-            d_print(f"{guess} is not a word in wordlist!!")                               # DEBUG
+            cprint(B, f"{guess} is not a word in wordlist!!")                               # DEBUG
             return False
 
         result = [CharStatus.word_doesnt_contain for _ in range(5)]
@@ -155,11 +149,6 @@ class Player:
                 solution_copy = solution_copy.replace(char, '_', 1)
                 # add to the result
                 result[index] = CharStatus.word_contains
-
-
-        d_print(f"solution: {self.solution_word}")                            # DEBUG
-        d_print(f"          {''.join([str(i.value) for i in result])}")       # DEBUG
-        d_print(f"guess:    {guess}")                                         # DEBUG
 
         return result
 

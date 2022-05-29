@@ -9,12 +9,7 @@ from Errors import *
 # TODO: test if port already in use
 # TODO: make IP version agnostic
 
-import colorama                    # DEBUG
-colorama.init()                    # DEBUG
-green = colorama.Fore.GREEN        # DEBUG
-red = colorama.Fore.RED            # DEBUG
-reset = colorama.Style.RESET_ALL   # DEBUG
-
+from color import *
 
 class NetworkCommunicator(threading.Thread):
     """A class that handles the actual network stuff
@@ -64,8 +59,6 @@ class NetworkCommunicator(threading.Thread):
         # set the port variable to the port assigned py the operating system
         self.port = self.main_socket.getsockname()[1]
 
-        print(f"local_address: {(self.host, self.port)=}") # DEBUG
-
         self.main_socket.listen()
 
         self.inputs, self.outputs, self.exc = [self.main_socket], [], []
@@ -85,8 +78,6 @@ class NetworkCommunicator(threading.Thread):
         """'mainloop' of the thread, constantly polling for new entries to the message_out_queue and blocking using select for incoming messages 
         
         """
-
-        print(f"sender is running!! on: {self.main_socket.getsockname()}")
         
         while self.inputs:
 
@@ -247,7 +238,7 @@ class NetworkCommunicator(threading.Thread):
         # convert byte_header from bytes to usable format
         magic_number, size, gamekey, sender_identifier, message_type = struct.unpack(format, byte_header)
 
-        print(f"{green}recieved a message: {chr(message_type)}{reset}")
+        cprint(G, f"recieved a message: {chr(message_type)}")
 
         if magic_number != self.magic_number:
             raise MagicNumberMisMatchError(f"magic number doesnt match: {magic_number} != {self.magic_number}")

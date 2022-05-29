@@ -1,6 +1,10 @@
+from datetime import datetime
+from Errors import AlreadyWonError, OutOfWordTableBounds
 from NetworkHandler import NetworkHandler
 from WordList import WordList, CharStatus
 from Player import Player, MultiPlayer
+
+from color import *
 
 class SingleplayerGame:
     pass
@@ -13,7 +17,7 @@ class MultiplayerGame:
         # TODO create the client player
 
         self.player = MultiPlayer(
-            solution_word="teest", # TODO sync solution word between players
+            solution_word=None, # TODO sync solution word between players
             username="teest uSername"
         )
 
@@ -24,45 +28,48 @@ class MultiplayerGame:
             localhost=True
         )
 
-        i = input(f"create or join (c/j): ")
+    def create_network(self):
+        solution_word = self.wordlist.get_random_word()
+        gkey = 500
+        self.network_handler.create_network(gkey, solution_word)
 
-        if i == 'c':
-            self.network_handler.create_network(500)
-        elif i == 'j':
-            # gkey = int(input("gamekey: "))
-            gkey = 500
-            port = int(input("raddr_port: "))
-            self.network_handler.join_network(gkey, remote_address=('127.0.0.1', port))
+    def join_network(self):
+        gkey = 500
+        port = int(input("raddr_port: "))
+        self.network_handler.join_network(gkey, remote_address=('127.0.0.1', port))
 
-        # while len(self.network_handler.identifier_to_player_dict) == 1:
-        #     self.network_handler.check_for_recieved_messages()
 
-        self.solution_word = self.wordlist.get_random_word()
-        # self.solution_word = "thaal"                                # DEBUG
-        print(f"DEBUG solution: {self.solution_word}")              # DEBUG
-
-    def game_loop(self):
-        """temporary game loop"""
-        # TODO: check for new messages
-        # TODO: check for wins of client and others
-        while True:
-            user_input = input()
-            print(f"-> {user_input=}")            # DEBUG
-            # self.network_handler.send_message_word(word=user_input)
-            self.network_handler.send_to_all(self.network_handler.send_message_word, user_input)
-
-            if self.player_list[0].add_word(user_input) == [CharStatus.correct_position]*5:
-            # if self.player_list[0].add_char(char) == [CharStatus.correct_position]*5:
-                print("player won!!!")
-                break
-            self.player_list[0].print_table()
-            if self.player_list[0].current_word_index == self.player_list[0].max_word_guesses:
-                print("no more guesses!! you lost")
-                break
+    def close(self) -> None:
+        self.network_handler.close()
 
     def update(self):
         self.network_handler.check_for_recieved_messages()
 
     def add_char(self, char):
+        if self.player.current_word_index >= self.player.max_word_guesses:
+            raise OutOfWordTableBounds("word list too full!")
+        elif self.player.current_char_index >= self.player.chars_in_a_word:
+            raise OutOfWordTableBounds("char list too full!")
+        elif self.player.won:
+            raise AlreadyWonError("the player has already won")
+        # elif self.player.endtime is not None: # already covered by OutOfWordTableBounds
+        #     raise AlreadyLostError(f"the player already used up all guesses")
+        
         self.network_handler.send_to_all(self.network_handler.send_message_char_add, char)
-        self.player.add_char(char)
+        match = self.player.add_char(char)
+        if match == [CharStatus.correct_position]*5:
+            self.player.won = True
+            self.player.endtime = datetime.now().timestamp()
+            # TODO the client player has won, there should probably happen more
+
+    def remove_char(self):
+        if self.player.current_char_index < 1:
+            raise OutOfWordTableBounds("char list too empty!")
+        if self.player.won:
+            raise AlreadyWonError("the player has already won")
+
+        char = self.player.word_table[self.player.current_word_index][self.player.current_char_index-1]
+
+        self.player.remove_char(char)
+
+        self.network_handler.send_to_all(self.network_handler.send_message_char_remove, char)

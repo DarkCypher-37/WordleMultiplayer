@@ -8,16 +8,13 @@ from NetworkCommunicator import NetworkCommunicator
 from WordList import CharStatus
 from Errors import *
 
+from color import *
+
 # TODO join needs to send the right port to connect to
 # TODO join_note needs to send the right port to connect to
 # TODO First to send a ready message gets to decide the solution word
 #       -> might cause problems when 2 player send simultaniously
 
-import colorama                    # DEBUG
-colorama.init()                    # DEBUG
-green = colorama.Fore.GREEN        # DEBUG
-red = colorama.Fore.RED            # DEBUG
-reset = colorama.Style.RESET_ALL   # DEBUG
 
 
 class NetworkHandler:
@@ -39,6 +36,7 @@ class NetworkHandler:
         self.host = self.network_communicator.get_host # display the host to the mainloop / game
 
         self.gamekey = None
+        self.solution_word = None
         self.max_network_size = 5
         self.game_has_started = False
         self.has_joined_a_network = False
@@ -55,9 +53,18 @@ class NetworkHandler:
         
         self.username = self.identifier_to_player_dict[self.client_identifier].username
 
+    def close(self) -> None:
+        cprint(R, f"closing ...") # DEBUG
+        self.send_to_all(send_message_function=self.send_message_leave, args=())
+        self.network_communicator.close()
+
     def add_player(self, username: str, identifier: int, remote_address: tuple[str]) -> None:
+
+        if self.solution_word is None:
+            raise ValueError("maybe self.solution word cant be None on player creation, maybe it can??") # DEBUG
+
         player = MultiPlayer(
-            solution_word="teest",      # DEBUG get the real solution word
+            solution_word=self.solution_word,      # DEBUG get the real solution word
             username=username,
             identifier=identifier,
             raddr=remote_address
@@ -68,7 +75,7 @@ class NetworkHandler:
 
         # TODO add to 
 
-        print(f"{green} USER ADDED: {player.username=}{reset}")     # DEBUG
+        cprint(G, f"USER ADDED: {player.username=}")     # DEBUG
 
     def gen_random_bytes(self, byte_count: int, start: int = 0) -> int:
         """method to get a specified amount of random bytes
@@ -124,6 +131,7 @@ class NetworkHandler:
 
             k (join response accept):  send back an accept after a join request
                 - identifier for the new player
+                - solution word # TODO
                 - list of players (IP + Port)
                
             m (join response deny) :  send back a deny after a join request
@@ -137,14 +145,13 @@ class NetworkHandler:
                 - username
 
             s (start game)        : starts a game
+                - solution word # TODO
                 - time as Unicode timestamp
             
             e (err info)          :  note from NetworkCommunicator to Client to report an error
                 - reason
 
             r (ready)             :  transmits a notice to all players that one player is ready to play or to restart
-                - solution word # TODO
-
             u (unready)           :  transmits a notice to all players that one player is not ready anymore
             c (char add)          :  transmits one char to be added
             d (char remove)       :  transmits one char to be removed
@@ -159,7 +166,6 @@ class NetworkHandler:
             remote_address = self.identifier_to_raddr_dict[reciever_identifier]
         
         if message_string is None:
-            print(f"DEBUG: {message_string=} may cause an error or not, idk man")       # DEBUG
             message_string = ""
 
         sender_identifier = self.client_identifier
@@ -227,7 +233,10 @@ class NetworkHandler:
                 message_string=message_string
             )
         elif message_type == 'd':
-            # TODO
+            self.recieved_message_char_remove(
+                sender_identifier=sender_identifier,
+                message_string=message_string
+            )
             pass
         elif message_type == 'w':
             # TODO
@@ -251,7 +260,7 @@ class NetworkHandler:
             self.send_message_join_request(remote_address)
 
 
-    def create_network(self, debug_gamekey) -> None:
+    def create_network(self, debug_gamekey, solution_word) -> None:
 
         # starting the communicator
         self.network_communicator.start()
@@ -276,6 +285,9 @@ class NetworkHandler:
         self.gamekey = self.gen_random_bytes(8, start=1)
         self.gamekey = debug_gamekey
         self.has_joined_a_network = True
+
+        self.solution_word = solution_word
+        self.identifier_to_player_dict[self.client_identifier].solution_word = solution_word
 
     
     def send_to_all(self, send_message_function, *args, include_reciever_identifier: bool = True) -> None:
@@ -354,6 +366,9 @@ class NetworkHandler:
         while new_player_identifier in self.identifier_to_raddr_dict:
             new_player_identifier = self.gen_random_bytes(8, start=1)
 
+        if len(self.solution_word) != 5:
+            raise ValueError(f"solution word has to be of length 5 but is: {self.solution_word!r}")
+
         # get the remote_addresses (raddr) of all the players (including self/client)
         remote_addresses_list = [player.remote_address for player in self.identifier_to_player_dict.values()]
         remote_addresses_list.remove(None)
@@ -363,7 +378,7 @@ class NetworkHandler:
         self.send_message(
             remote_address=remote_address, 
             message_type='k', 
-            message_string=str(new_player_identifier).rjust(20, '_') + str(remote_addresses_list)
+            message_string=self.solution_word + str(new_player_identifier).rjust(20, '_') + str(remote_addresses_list)
         )
 
     def recieved_message_join_response_accept(self, message_string: str) -> None:
@@ -374,9 +389,13 @@ class NetworkHandler:
         """ 
         # using eval() is just asking for security problems ...
         # TODO replace eval with something diffrent (such as padding + using a seperator char)
-        new_player_identifier = eval(message_string[:20].replace('_', ''))
-        remote_addresses_list = eval(message_string[20:])
-        
+        solution_word = message_string[:5]
+        new_player_identifier = eval(message_string[5:25].replace('_', '')) # maybe use int() instead?
+        remote_addresses_list = eval(message_string[25:])
+
+        self.solution_word = solution_word
+        self.identifier_to_player_dict[self.client_identifier].solution_word = solution_word
+
         # self.client_identifier = new_player_identifier
 
         # switch the client_identifier from a temporary one
@@ -393,6 +412,8 @@ class NetworkHandler:
 
         for remote_address in remote_addresses_list:
             self.send_message_join_note(remote_address)
+
+        self.has_joined_a_network = True
 
     def send_message_join_response_deny(self, remote_address: tuple, reason: str) -> None:
         """
@@ -568,8 +589,6 @@ class NetworkHandler:
         c (char add):
             - char
         """
-        
-        print("'NetworkHandler add_char' here")
 
         if len(char) != 1:
             raise CharTooLongError(f"'char' should be a char (or a string with length 1), but is {len(char)!r} long and contains: {char!r}")
@@ -593,9 +612,10 @@ class NetworkHandler:
 
         # TODO might have to think about the other player filling up his entire grid
 
-        if player.add_char(char=char) == [CharStatus]*5:
+        if player.add_char(char=char) == [CharStatus.correct_position]*5:
             # the player won
-            player.endtime = datetime().now().timestamp()
+            player.endtime = datetime.now().timestamp()
+            player.won = True
             # TODO there might be more stuff todo if a player wins
     
     def send_message_char_remove(self, reciever_identifier: int, char: str) -> None:
@@ -658,13 +678,13 @@ class NetworkHandler:
         match = player.add_word(word)
 
         # NOTE since the player sends the starttime, but the endtime is taken locally, if there is a high ping the remoteplayer may get a diffrent time for his win/loss
-        if match == [CharStatus]*5:
+        if match == [CharStatus.correct_position]*5:
             # the player won
-            player.endtime = datetime().now().timestamp()
+            player.endtime = datetime.now().timestamp()
             player.won = True
         elif match and player.current_word_index >= player.max_word_guesses:
             # player lost
-            player.endtime = datetime().now().timestamp()
+            player.endtime = datetime.now().timestamp()
 
 
     def send_message_leave(self, reciever_identifier: int) -> None:

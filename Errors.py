@@ -31,3 +31,9 @@ class CharTooLongError(ValueError):
 
 class WordTooLongError(ValueError):
     pass
+
+class OutOfWordTableBounds(KeyError):
+    pass
+
+class AlreadyWonError(Exception):
+    pass
