@@ -172,7 +172,7 @@ class NetworkHandler:
 
         message_data = self.gamekey, sender_identifier, message_type, message_string
 
-        print(f"put message in queue: {message_type=}, {remote_address=}, {message_string=}") # DEBUG
+        cprint(Y, f"put message in queue: {message_type=}") # DEBUG
 
         self.message_out_queue.put((remote_address, *message_data)) # FIXME: might not add a tuple but uses one as self ?? already fixed it??
 
@@ -192,8 +192,6 @@ class NetworkHandler:
 
         message_type = chr(message_type_int)
         message_string = byte_message.decode()
-
-        print(f"{red}recieved a message{reset}: {message_type=}, {sender_identifier=}") # DEBUG
 
         # TODO fill out big if statement
         # sort out messages first whether self-player is part of a network / currently joining a network
@@ -283,7 +281,7 @@ class NetworkHandler:
             # print(f"self.identifier_to_raddr_dict(one None is okay, more than one not):{self.identifier_to_raddr_dict}") # DEBUG
 
         self.gamekey = self.gen_random_bytes(8, start=1)
-        self.gamekey = debug_gamekey
+        self.gamekey = debug_gamekey                                # DEBUG
         self.has_joined_a_network = True
 
         self.solution_word = solution_word

@@ -33,9 +33,11 @@ class MultiplayerGame:
         gkey = 500
         self.network_handler.create_network(gkey, solution_word)
 
-    def join_network(self):
+    def join_network(self, debug_port):
         gkey = 500
-        port = int(input("raddr_port: "))
+        port=debug_port
+        # port = int(input("raddr_port: "))
+        # self.network_handler.join_network(gkey, remote_address=("192.168.128.1", port))
         self.network_handler.join_network(gkey, remote_address=('127.0.0.1', port))
 
 

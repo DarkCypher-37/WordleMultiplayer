@@ -132,12 +132,14 @@ class Player:
 
         result = [CharStatus.word_doesnt_contain for _ in range(5)]
         solution_copy = self.solution_word
+        guess_copy = guess
 
         # first filter out all letters with correct position
         for index, char in enumerate(guess):
             if solution_copy[index] == char:
-                # solution_copy[index] = '_' doesn't work but this does essentially the same:
+                # solution_copy[index] = '_' doesn't work (since strings are immutable) but this does essentially the same:
                 solution_copy = solution_copy[:index] + '_' + solution_copy[index+1:]
+                guess_copy = guess_copy[:index] + '_' + guess_copy[index+1:]
                 # add to the result
                 result[index] = CharStatus.correct_position
         

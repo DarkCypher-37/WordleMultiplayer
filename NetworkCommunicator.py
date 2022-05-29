@@ -157,7 +157,7 @@ class NetworkCommunicator(threading.Thread):
                     byte_messages = self.out_buffer[remote_address]
 
                     # send all the messages in the messages list
-                    print(f"NC sent from{sock.getsockname()} | to: {sock.getpeername()}")
+                    cprint(Y, f"sending a message")
                     while len(byte_messages):
                         sock.sendall(byte_messages.pop(0))
 
