@@ -30,16 +30,27 @@ class MultiplayerGame:
 
     def create_network(self):
         solution_word = self.wordlist.get_random_word()
-        gkey = 500
-        self.network_handler.create_network(gkey, solution_word)
+        gamekey = self.network_handler.gen_random_bytes(8)
+        gamekey = 500
+        self.network_handler.create_network(gamekey, solution_word)
 
-    def join_network(self, debug_port):
-        gkey = 500
-        port=debug_port
-        # port = int(input("raddr_port: "))
-        # self.network_handler.join_network(gkey, remote_address=("192.168.128.1", port))
-        self.network_handler.join_network(gkey, remote_address=('127.0.0.1', port))
+    def join_network(self, remote_address: tuple[str, int], gamekey: int):
+        self.network_handler.join_network(
+            gamekey=gamekey,
+            remote_address=remote_address
+        )
 
+    def ready(self):
+        self.player.is_ready = True
+        self.network_handler.send_to_all(
+            send_message_function = self.network_handler.send_message_ready_player
+        )
+
+    def unready(self):
+        self.player.is_ready = False
+        self.network_handler.send_to_all(
+            send_message_function = self.network_handler.send_message_unready_player
+        )
 
     def close(self) -> None:
         self.network_handler.close()
@@ -48,6 +59,7 @@ class MultiplayerGame:
         self.network_handler.check_for_recieved_messages()
 
     def add_char(self, char):
+        # self.network_handler.game_has_started
         if self.player.current_word_index >= self.player.max_word_guesses:
             raise OutOfWordTableBounds("word list too full!")
         elif self.player.current_char_index >= self.player.chars_in_a_word:
@@ -62,7 +74,7 @@ class MultiplayerGame:
         if match == [CharStatus.correct_position]*5:
             self.player.won = True
             self.player.endtime = datetime.now().timestamp()
-            # TODO the client player has won, there should probably happen more
+            return True
 
     def remove_char(self):
         if self.player.current_char_index < 1:

@@ -63,6 +63,8 @@ class NetworkCommunicator(threading.Thread):
 
         self.inputs, self.outputs, self.exc = [self.main_socket], [], []
 
+        self.ALL_SOCKETS = [str(self.main_socket)]
+
     @property
     def get_port(self) -> int:
         """a getter for the port"""
@@ -95,6 +97,7 @@ class NetworkCommunicator(threading.Thread):
 
             for remote_address in list(self.out_buffer.keys()):
                 errno = send_socket.connect_ex(remote_address)
+                cprint(C, f"connecting to port: {remote_address[1]}") # DEBUG
                 if errno == 0:
                     # print(f"succesfully connect_ex()ed (with {errno=!r})")
                     pass
@@ -115,6 +118,7 @@ class NetworkCommunicator(threading.Thread):
                     raise ConnectExError(errno=errno)
                 
                 self.outputs.append(send_socket)
+                self.ALL_SOCKETS.append(str(send_socket))
 
             # block until either a socket is ready or until the timeout, to register new entries in the 'self.message_out_queue'
             readable_sockets, writable_sockets, exceptional_sockets = select.select(self.inputs, self.outputs, self.exc, self.timeout_interval)
@@ -122,10 +126,15 @@ class NetworkCommunicator(threading.Thread):
             # print([s for s in self.inputs])
 
             # print(f"len(inputs): {red}{len(self.inputs)}{reset} len(readable_sockets): {red}{len(readable_sockets)}{reset} writable_sockets: {red}{len(writable_sockets)}{reset}")
+            # print(f"len(inputs): {red}{len(self.inputs)}{reset} len(readable_sockets): {red}{len(readable_sockets)}{reset} writable_sockets: {red}{len(writable_sockets)}{reset}")
+
+            # cprint(G, "\n   ".join([f"sockname {i.getsockname(), i.getpeername()}" for i in self.inputs[1:]]))
+            # cprint(R, "\n   ".join([f"sockname {i.getsockname(), i.getpeername()}" for i in self.outputs]))
+
+            # cprint(M, "\n".join([str(s) for s in self.ALL_SOCKETS]))
 
             # handle all readable sockets
             sock: socket.socket
-
             for sock in readable_sockets:
                 if sock == self.main_socket:
                     # accepting a new connection
@@ -133,6 +142,7 @@ class NetworkCommunicator(threading.Thread):
                     connection.setblocking(False)
                     # append the new connection to the inputs, to let select() put it in readable
                     self.inputs.append(connection)
+                    self.ALL_SOCKETS.append(str(connection))
                 else:
                     # recv data and append to message_out_queue
                     try:
@@ -143,7 +153,8 @@ class NetworkCommunicator(threading.Thread):
                         # print(sock)    # DEBUG??? 
                         # sock.close()    # DEBUG??? 
 
-                    except (ConnectionClosedError, MagicNumberMisMatchError, MessageTooBigError):
+                    except (ConnectionClosedError, MagicNumberMisMatchError, MessageTooBigError) as e:
+                        cprint(R, f"ERROR: {e}")        # DEBUG
                         self.inputs.remove(sock)
                         sock.shutdown(socket.SHUT_RDWR)
                         sock.close()
@@ -157,19 +168,20 @@ class NetworkCommunicator(threading.Thread):
                     byte_messages = self.out_buffer[remote_address]
 
                     # send all the messages in the messages list
-                    cprint(Y, f"sending a message")
                     while len(byte_messages):
                         sock.sendall(byte_messages.pop(0))
 
                     # delete the messages list if it is empty
                     if len(byte_messages) == 0:
                         del self.out_buffer[remote_address]
+                        sock.close()
 
                     # remove the socket, so that it won't be used again for select()
                     self.outputs.remove(sock)
 
             sock: socket.socket
             for sock in exceptional_sockets:
+                cprint(G, "EXCEPTIONAL SOCKET CLOSED !!")       # DEBUG
                 # should not happen, if it does we just close the connection
                 if sock in self.inputs:
                     self.inputs.remove(sock)
@@ -181,6 +193,7 @@ class NetworkCommunicator(threading.Thread):
             # closes the main socket if neccessary
             if self.should_close:
                 self.close()
+                return
 
     def error_message(self, reason:str) -> None:
         """puts an error message 'e' on the message_in_queue to notify the other thread of an error
@@ -300,6 +313,9 @@ class NetworkCommunicator(threading.Thread):
 
         return remote_address, byte_message
 
+    def client_close(self):
+        self.should_close = True
+    
     def close(self) -> None:
         """closes the socket and ends the thread (by emptying self.inputs)
 
@@ -308,4 +324,8 @@ class NetworkCommunicator(threading.Thread):
         while len(self.inputs):
             self.inputs.pop(-1).close()
 
-        print(f"the NetworkCommunicator is shutting down, {len(self.inputs)} sockets still waiting!") # DEBUG
+        # sys.exit()
+        # thread.exit()
+        # thread._Thread_stop()
+
+        cprint(Y, f"the NetworkCommunicator is shutting down, {len(self.inputs)} sockets still waiting!") # DEBUG

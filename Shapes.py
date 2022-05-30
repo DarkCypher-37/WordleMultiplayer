@@ -1,5 +1,7 @@
-from turtle import width
 import arcade
+from Errors import CharTooLongError
+
+from WordList import CharStatus
 
 class Rectangle():
     
@@ -67,7 +69,7 @@ class Button(Rectangle):
 
     def __init__(self, x, y, width, height, color, hover_color, text_color, text, font_size):
         super().__init__(x, y, width, height, color)
-        self.text = Text(x, y, text_color, text, font_size)
+        self.text_lable = Text(x, y, text_color, text, font_size)
         self.normal_color = color
         self.hover_color = hover_color
         self.text_color = text_color
@@ -75,8 +77,8 @@ class Button(Rectangle):
     
     def draw(self):
         super().draw()
-        self.text.draw()
-    
+        self.text_lable.draw()
+
     def is_mouse_hovering(self, mx, my):
         if mx < self.x + self.width/2 and mx > self.x - self.width/2 \
             and my < self.y + self.height/2 and my > self.y - self.height/2:
@@ -157,3 +159,48 @@ class InputPrompt(Rectangle):
         else:
             self.color = self.normal_color
             self.hover = False
+
+class ClientWordTable:
+
+    def __init__(self, x, y, pad, word_table: list[list[str]],  match_table: list[list[CharStatus]]) -> None:
+
+        self.x = x
+        self.y = y
+
+        self.pad = pad
+
+        self.word_table = word_table
+        self.match_table = match_table
+
+        self.colors = [arcade.color.ASH_GREY, arcade.color.YELLOW, arcade.color.GREEN, arcade.color.GRAY]
+
+    def draw(self):
+        for word_index, word in enumerate(self.word_table):
+            for char_index, char in enumerate(word):
+
+                x = self.x + char_index*self.pad
+                y = self.y - word_index*self.pad
+
+                if char is None:
+                    char = '▢'
+
+                if len(char) != 1:
+                    raise CharTooLongError(f"Char has to be length 1, but is: {char!r}")
+
+                arcade.draw_rectangle_filled(
+                    center_x=x,
+                    center_y=y,
+                    width=self.pad*4/5,
+                    height=self.pad*4/5,
+                    color=self.colors[self.match_table[word_index][char_index].value]
+                )
+
+                arcade.draw_text(
+                    text=char,
+                    start_x=x,
+                    start_y=y,
+                    color=arcade.color.BLACK,
+                    font_size=self.pad*2/4,
+                    anchor_x='center',
+                    anchor_y='center',
+                )

@@ -54,11 +54,10 @@ class NetworkHandler:
         self.username = self.identifier_to_player_dict[self.client_identifier].username
 
     def close(self) -> None:
-        cprint(R, f"closing ...") # DEBUG
-        self.send_to_all(send_message_function=self.send_message_leave, args=())
-        self.network_communicator.close()
+        self.send_to_all(send_message_function=self.send_message_leave)
+        self.network_communicator.client_close()
 
-    def add_player(self, username: str, identifier: int, remote_address: tuple[str]) -> None:
+    def add_player(self, username: str, identifier: int, remote_address: tuple[str, int]) -> None:
 
         if self.solution_word is None:
             raise ValueError("maybe self.solution word cant be None on player creation, maybe it can??") # DEBUG
@@ -93,7 +92,7 @@ class NetworkHandler:
 
         return random.randint(start, 2 ** (byte_count*8))
 
-    def send_message(self, message_type: str, message_string: str = None, reciever_identifier: int = None, remote_address: tuple = None) -> None:
+    def send_message(self, message_type: str, message_string: str = None, reciever_identifier: int = None, remote_address: tuple[str, int] = None) -> None:
         """adds a message to the message_out_queue
 
         ## Note:
@@ -214,17 +213,22 @@ class NetworkHandler:
                 sender_identifier=sender_identifier
             )
         elif message_type == 's':
-            # TODO
-            pass
+            self.recieve_message_start(
+                sender_identifier=sender_identifier,
+                message_string=message_string
+            )
         elif message_type == 'e':
             # TODO
-            pass
+            print(f"MESSAGE E recieved!!")
         elif message_type == 'r':
-            # TODO
-            pass
+            self.recieved_message_ready_player(
+                sender_identifier=sender_identifier
+            )
         elif message_type == 'u':
             # TODO
-            pass
+            self.recieved_message_unready_player(
+                sender_identifier=sender_identifier
+            )
         elif message_type == 'c':
             self.recieved_message_char_add(
                 sender_identifier=sender_identifier,
@@ -237,14 +241,17 @@ class NetworkHandler:
             )
             pass
         elif message_type == 'w':
-            # TODO
-            pass
+            self.recieved_message_word(
+                sender_identifier=sender_identifier,
+                message_string=message_string
+            )
         elif message_type == 'l':
-            # TODO
-            pass
+            self.recieved_message_leave(
+                sender_identifier=sender_identifier
+            )
 
 
-    def join_network(self, gamekey: int, remote_address: tuple) -> None:
+    def join_network(self, gamekey: int, remote_address: tuple[str, int]) -> None:
 
         # starting the communicator
         self.network_communicator.start()
@@ -326,7 +333,7 @@ class NetworkHandler:
             message_string=message_string
         )
 
-    def recieved_message_join_request(self, remote_address: tuple, message_string: str) -> None:
+    def recieved_message_join_request(self, remote_address: tuple[str, int], message_string: str) -> None:
         """
         j (join request)      :  request to join the game
             - PORT
@@ -353,7 +360,7 @@ class NetworkHandler:
             # send an accept
             self.send_message_join_response_accept(remote_address)
 
-    def send_message_join_response_accept(self, remote_address: tuple) -> None:
+    def send_message_join_response_accept(self, remote_address: tuple[str, int]) -> None:
         """
         k (join response accept):  send back an accept after a join request
             - identifier for the new player
@@ -413,7 +420,7 @@ class NetworkHandler:
 
         self.has_joined_a_network = True
 
-    def send_message_join_response_deny(self, remote_address: tuple, reason: str) -> None:
+    def send_message_join_response_deny(self, remote_address: tuple[str, int], reason: str) -> None:
         """
         m (join response deny) :  send back a deny after a join request
             - reason
@@ -447,7 +454,7 @@ class NetworkHandler:
             message_string=local_port_string + self.username
         )
 
-    def recieved_message_join_note(self, message_string: str, remote_address: tuple, sender_identifier: int) -> None:
+    def recieved_message_join_note(self, message_string: str, remote_address: tuple[str, int], sender_identifier: int) -> None:
         """
         n (join note)         :  note to all players after
             - username
@@ -484,7 +491,7 @@ class NetworkHandler:
             message_string=local_port_string + username
         )
     
-    def recieved_message_join_note_response(self, message_string: str, remote_address: tuple, sender_identifier: int) -> None:
+    def recieved_message_join_note_response(self, message_string: str, remote_address: tuple[str, int], sender_identifier: int) -> None:
         """
         O (join note response):  
             - username
@@ -500,6 +507,15 @@ class NetworkHandler:
             identifier=sender_identifier,
             remote_address=remote_address
         )
+
+    def everyone_finished_the_game(self) -> bool:
+        
+        everyone_finished = True
+        player: MultiPlayer
+        for player in self.identifier_to_player_dict.values():
+            print(player.endtime)
+            everyone_finished = False if player.endtime is None else everyone_finished
+        return everyone_finished
 
     def everyone_is_ready(self) -> bool:
         """
@@ -525,9 +541,8 @@ class NetworkHandler:
 
         if self.everyone_is_ready():
             self.send_to_all(
-                send_message_function=self.send_message_start,
-                args=(datetime.now().timestamp()),
-                include_reciever_address=True
+                self.send_message_start,
+                datetime.now().timestamp()
             )
 
 
@@ -536,9 +551,8 @@ class NetworkHandler:
         
         if self.everyone_is_ready():
             self.send_to_all(
-                send_message_function=self.send_message_start,
-                args=(datetime.now().timestamp()),
-                include_reciever_address=True
+                self.send_message_start,
+                datetime.now().timestamp()
             )
 
     def send_message_unready_player(self, reciever_identifier: int) -> None:
@@ -565,6 +579,9 @@ class NetworkHandler:
         s (start message):
             - timestamp
         """
+
+        self.identifier_to_player_dict[self.client_identifier].starttime = datetime.now().timestamp()
+
         self.send_message(
             reciever_identifier=reciever_identifier,
             message_type='s',
@@ -579,7 +596,8 @@ class NetworkHandler:
         self.identifier_to_player_dict[sender_identifier].starttime = float(message_string)
         # TODO
         # maybe do some checks
-        self.game_has_started # maybe do this somewhere diffrent
+        # if everyone_has_
+        self.game_has_started = True # maybe do this somewhere diffrent
 
 
     def send_message_char_add(self, reciever_identifier: int, char: str) -> None:

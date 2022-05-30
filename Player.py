@@ -1,3 +1,4 @@
+from datetime import datetime
 from WordList import WordList, CharStatus
 from Errors import *
 
@@ -72,6 +73,8 @@ class Player:
             # if the match was succesful reset the char index 
             self.current_char_index = 0
             self.current_word_index += 1
+            if self.current_char_index == self.max_word_guesses-1:
+                self.endtime = datetime.now().timestamp()
             return match
 
     def remove_char(self, char: str) -> None:
