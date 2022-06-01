@@ -23,8 +23,8 @@ class NetworkHandler:
         if len(playerlist) != 1:
             raise ValueError("playerlist can only contain the client player upon creation of the Network Handler")
 
-        self.message_in_queue = queue.LifoQueue()
-        self.message_out_queue = queue.LifoQueue()
+        self.message_in_queue = queue.Queue()
+        self.message_out_queue = queue.Queue()
 
         self.network_communicator = NetworkCommunicator(
             message_in_queue=self.message_in_queue, 
@@ -513,7 +513,7 @@ class NetworkHandler:
         everyone_finished = True
         player: MultiPlayer
         for player in self.identifier_to_player_dict.values():
-            print(player.endtime)
+            # print(player.endtime)
             everyone_finished = False if player.endtime is None else everyone_finished
         return everyone_finished
 

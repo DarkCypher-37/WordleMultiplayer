@@ -327,7 +327,7 @@ class GameView(arcade.View):
         else:
             self.game.create_network()
         
-        self.client_word_table = Shapes.ClientWordTable(
+        self.client_word_table = Shapes.WordTable(
             x=SCREEN_WIDTH/2 - (2*50),
             y=SCREEN_HEIGHT - 100,
             pad=50,
@@ -405,7 +405,7 @@ class GameView(arcade.View):
         pad = 30
         for index, player in enumerate(list(self.game.network_handler.identifier_to_player_dict.values())):
             if player != self.game.player:
-                table = Shapes.ClientWordTable(
+                table = Shapes.WordTable(
                     x=start_x + index*pad,
                     y=SCREEN_HEIGHT - 400,
                     pad=25,
@@ -420,7 +420,7 @@ class GameView(arcade.View):
         if len(self.player_word_tables) < len(self.game.network_handler.identifier_to_player_dict.values()):
             self.update_players()
         self.game.update()
-        print(self.won)
+        # print(self.won)
         if self.game.network_handler.everyone_finished_the_game() and self.won is not None:
             rank_list = {}
             for player in self.game.network_handler.identifier_to_player_dict.values():
@@ -488,7 +488,7 @@ class GameOverView(arcade.View):
 
     def setup(self, client_identifier: int, rank_list: dict[int, tuple[str, float]], game) -> None:
         print("setup..")
-        # TODO
+        # TODO display ranked list and the solution word
         self.rank_lable = Shapes.Text(
             x=SCREEN_WIDTH/2,
             y=SCREEN_HEIGHT/2,
@@ -521,12 +521,7 @@ def main() -> None:
         update_rate = 1 / 60, 
         antialiasing = True
     )
-
     
-    # enter_username_view = EnterUsernameView()
-    # enter_username_view.setup()
-    # window.show_view(enter_username_view)
-
     start_view = StartView()
     window.show_view(start_view)
     start_view.setup()

@@ -19,12 +19,12 @@ class NetworkCommunicator(threading.Thread):
 
     """
 
-    def __init__(self, message_in_queue: queue.LifoQueue, message_out_queue: queue.LifoQueue, port: int = 0, timeout_interval: float = 0.5, localhost: bool = False) -> None:
+    def __init__(self, message_in_queue: queue.Queue, message_out_queue: queue.Queue, port: int = 0, timeout_interval: float = 0.5, localhost: bool = False) -> None:
         """ Initialize a NetworkCommunicator
         
         Args:
-            message_in_queue               (queue.LifoQueue) : a queue for thread safe queueing recieved messages to be handled
-            message_out_queue              (queue.LifoQueue) : a queue for thread safe queueing messages to be sent
+            message_in_queue               (queue.Queue) : a queue for thread safe queueing recieved messages to be handled
+            message_out_queue              (queue.Queue) : a queue for thread safe queueing messages to be sent
             port                           (int)             : port on which the NetworkCommunicator will bind itself onto
             timeout            (optional)  (float)           : an optional parameter to specify the timeout for the select()
             localhost          (optional)  (bool)            : if True the localhost will be used, for debugging purposes

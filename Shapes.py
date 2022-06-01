@@ -160,14 +160,15 @@ class InputPrompt(Rectangle):
             self.color = self.normal_color
             self.hover = False
 
-class ClientWordTable:
+class WordTable:
 
-    def __init__(self, x, y, pad, word_table: list[list[str]],  match_table: list[list[CharStatus]]) -> None:
+    def __init__(self, x, y, pad, word_table: list[list[str]],  match_table: list[list[CharStatus]], show_chars = False) -> None:
 
         self.x = x
         self.y = y
 
         self.pad = pad
+        self.show_chars = show_chars
 
         self.word_table = word_table
         self.match_table = match_table
@@ -182,7 +183,7 @@ class ClientWordTable:
                 y = self.y - word_index*self.pad
 
                 if char is None:
-                    char = '▢'
+                    char = ' '
 
                 if len(char) != 1:
                     raise CharTooLongError(f"Char has to be length 1, but is: {char!r}")
@@ -195,12 +196,13 @@ class ClientWordTable:
                     color=self.colors[self.match_table[word_index][char_index].value]
                 )
 
-                arcade.draw_text(
-                    text=char,
-                    start_x=x,
-                    start_y=y,
-                    color=arcade.color.BLACK,
-                    font_size=self.pad*2/4,
-                    anchor_x='center',
-                    anchor_y='center',
-                )
+                if self.show_chars:
+                    arcade.draw_text(
+                        text=char,
+                        start_x=x,
+                        start_y=y,
+                        color=arcade.color.BLACK,
+                        font_size=self.pad*2/4,
+                        anchor_x='center',
+                        anchor_y='center',
+                    )
